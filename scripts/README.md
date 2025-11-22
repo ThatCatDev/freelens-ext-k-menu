@@ -10,7 +10,7 @@ This directory contains helper scripts for developing and testing the Freelens e
 
 **What it does:**
 1. Builds the extension
-2. Creates a symlink from `~/Library/Application Support/Freelens/node_modules/@freelensapp/example-extension` to your project directory
+2. Creates a symlink from `~/Library/Application Support/Freelens/node_modules/@thatcatdev/k-menu` to your project directory
 3. Registers the extension in Freelens's `lens-extensions.json`
 4. Starts watch mode to automatically rebuild on file changes
 
@@ -30,7 +30,7 @@ This directory contains helper scripts for developing and testing the Freelens e
 
 **What it does:**
 1. Builds the extension
-2. Copies the entire project to `~/Library/Application Support/Freelens/node_modules/@freelensapp/example-extension`
+2. Copies the entire project to `~/Library/Application Support/Freelens/node_modules/@thatcatdev/k-menu`
 3. Registers the extension in Freelens's `lens-extensions.json`
 
 **When to use:**
@@ -67,10 +67,10 @@ The extension folder name in `~/.freelens/extensions/` uses the format: `scope--
 ## Troubleshooting
 
 **Extension not appearing:**
-1. Check if extension exists: `ls -la ~/.freelens/extensions/freelensapp--example-extension`
-2. Check if symlink exists: `ls -la "$HOME/Library/Application Support/Freelens/node_modules/@freelensapp/example-extension"`
+1. Check if extension exists: `ls -la ~/.freelens/extensions/thatcatdev--k-menu`
+2. Check if symlink exists: `ls -la "$HOME/Library/Application Support/Freelens/node_modules/@thatcatdev/k-menu"`
 3. Verify registration: `cat "$HOME/Library/Application Support/Freelens/lens-extensions.json"`
-4. Check Freelens logs: `tail -100 ~/Library/Logs/Freelens/lens.log | grep -i example`
+4. Check Freelens logs: `tail -100 ~/Library/Logs/Freelens/lens.log | grep -i k-menu`
 5. Restart Freelens completely (quit and reopen, not just Cmd+R)
 
 **Changes not reflected:**

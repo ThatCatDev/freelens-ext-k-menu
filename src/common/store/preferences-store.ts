@@ -1,35 +1,40 @@
 import { Common } from "@freelensapp/extensions";
 import { makeObservable, observable } from "mobx";
 
-export interface ExamplePreferencesModel {
+export interface KMenuPreferencesModel {
   enabled: boolean;
+  keyboardShortcut: string;
 }
 
-export class ExamplePreferencesStore extends Common.Store.ExtensionStore<ExamplePreferencesModel> {
-  @observable accessor enabled = false;
+export class KMenuPreferencesStore extends Common.Store.ExtensionStore<KMenuPreferencesModel> {
+  @observable accessor enabled = true;
+  @observable accessor keyboardShortcut = "Cmd+K";
 
   constructor() {
     super({
-      configName: "example-preferences-store",
+      configName: "k-menu-preferences-store",
       defaults: {
-        enabled: false,
+        enabled: true,
+        keyboardShortcut: "Cmd+K",
       },
     });
-    console.log("[EXAMPLE-PREFERENCES-STORE] constructor");
+    console.log("[K-MENU-PREFERENCES-STORE] constructor");
     makeObservable(this);
   }
 
-  fromStore({ enabled }: ExamplePreferencesModel): void {
-    console.log(`[EXAMPLE-PREFERENCES-STORE] set ${enabled}`);
+  fromStore({ enabled, keyboardShortcut }: KMenuPreferencesModel): void {
+    console.log(`[K-MENU-PREFERENCES-STORE] Loading: enabled=${enabled}, keyboardShortcut=${keyboardShortcut}`);
 
     this.enabled = enabled;
+    this.keyboardShortcut = keyboardShortcut;
   }
 
-  toJSON(): ExamplePreferencesModel {
-    const enabled = this.enabled;
-    console.log(`[EXAMPLE-PREFERENCES-STORE] get ${enabled}`);
+  toJSON(): KMenuPreferencesModel {
+    const { enabled, keyboardShortcut } = this;
+    console.log(`[K-MENU-PREFERENCES-STORE] Saving: enabled=${enabled}, keyboardShortcut=${keyboardShortcut}`);
     return {
       enabled,
+      keyboardShortcut,
     };
   }
 }

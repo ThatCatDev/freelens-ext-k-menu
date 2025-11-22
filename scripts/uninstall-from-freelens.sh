@@ -4,8 +4,11 @@ set -e
 # Script to uninstall extension from Freelens
 FREELENS_DIR="$HOME/Library/Application Support/Freelens"
 FREELENS_EXTENSIONS_DIR="$HOME/.freelens/extensions"
-EXTENSION_NAME="@freelensapp/example-extension"
-EXTENSION_FOLDER_NAME="freelensapp--example-extension"
+
+# Read extension name from package.json
+EXTENSION_NAME=$(node -p "require('./package.json').name")
+# Convert @scope/name to scope--name for folder structure
+EXTENSION_FOLDER_NAME=$(echo "$EXTENSION_NAME" | sed 's/@//' | sed 's/\/\/*/--/g')
 EXTENSION_REAL_PATH="$FREELENS_EXTENSIONS_DIR/$EXTENSION_FOLDER_NAME"
 EXTENSION_SYMLINK_PATH="$FREELENS_DIR/node_modules/$EXTENSION_NAME"
 

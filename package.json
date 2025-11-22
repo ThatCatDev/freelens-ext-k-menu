@@ -1,10 +1,10 @@
 {
-  "name": "@freelensapp/example-extension",
-  "version": "1.6.2-1",
-  "description": "Example of a Freelens extension",
+  "name": "@thatcatdev/k-menu",
+  "version": "1.0.0",
+  "description": "K-Menu: A powerful command palette for Freelens",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/freelensapp/freelens-example-extension.git",
+    "url": "git+https://github.com/ThatCatDev/freelens-ext-k-menu.git",
     "directory": "."
   },
   "main": "out/main/index.js",
@@ -16,11 +16,11 @@
     "node": ">= 22.16.0",
     "freelens": "^1.6.0"
   },
-  "copyright": "© 2025 Freelens Authors",
+  "copyright": "© 2025 James Trotter",
   "license": "MIT",
   "author": {
-    "name": "Freelens Authors",
-    "email": "freelens@freelens.app"
+    "name": "James Trotter",
+    "email": "jamestrotter@users.noreply.github.com"
   },
   "publishConfig": {
     "access": "public",
@@ -53,18 +53,26 @@
     "build:force": "electron-vite build",
     "bump-version": "corepack pnpm version --no-commit-hooks --no-git-tag-version",
     "pack:dev": "corepack pnpm bump-version prerelease && corepack pnpm build:force && corepack pnpm build && corepack pnpm clean:tgz && corepack pnpm pack && corepack pnpm dlx shx@0.4.0 ls \"$PWD/*.tgz\"",
+    "dev": "./scripts/dev-watch.sh",
+    "install:freelens": "./scripts/install-to-freelens.sh",
+    "uninstall:freelens": "./scripts/uninstall-from-freelens.sh",
     "clean": "corepack pnpm clean:out",
     "clean:dts": "corepack pnpm dlx shx@0.4.0 rm -f \"src/**/*.scss.d.ts\"",
     "clean:node_modules": "corepack pnpm dlx shx@0.4.0 rm -rf node_modules",
     "clean:out": "corepack pnpm dlx shx@0.4.0 rm -rf out",
     "clean:tgz": "corepack pnpm dlx shx@0.4.0 rm -f \"*.tgz\"",
     "clean:all": "corepack pnpm \"/^clean:(dts|node_modules|out|tgz)\\$/\"",
-    "postupdate": "corepack pnpm biome:migrate"
+    "postupdate": "corepack pnpm biome:migrate",
+    "semantic-release": "semantic-release"
   },
   "devDependencies": {
     "@babel/plugin-proposal-decorators": "^7.28.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@freelensapp/extensions": "^1.6.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^12.0.2",
+    "@semantic-release/npm": "^13.1.2",
     "@types/node": "~22.15.35",
     "@types/react": "^17.0.90",
     "@vitejs/plugin-react": "^5.1.1",
@@ -73,6 +81,7 @@
     "mobx-react": "7.6.0",
     "react": "17.0.2",
     "sass": "^1.94.1",
+    "semantic-release": "^25.0.2",
     "typescript": "5.9.3",
     "vite": "^7.2.2",
     "vite-plugin-external": "^6.2.2",
@@ -81,9 +90,11 @@
   "keywords": [
     "extension",
     "freelensapp",
-    "lens",
-    "openlens",
-    "freelens"
+    "freelens",
+    "command-palette",
+    "k-menu",
+    "kubernetes",
+    "navigation"
   ],
   "packageManager": "pnpm@10.22.0"
 }

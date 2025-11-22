@@ -3,6 +3,9 @@
  */
 
 import { Renderer } from "@freelensapp/extensions";
+import { KMenuPreferencesStore } from "../../common/store";
+import { NavigationService } from "../services/navigation-service";
+import type { K8sResource } from "../services/k8s-resource-service";
 
 interface KubeResource {
   kind: string;
@@ -68,48 +71,206 @@ export class KMenuPalette {
   private searchDebounceTimer: number | null = null;
   private readonly DEBOUNCE_DELAY = 150; // ms
 
+  private activeIframeSource: Window | null = null;
+
   constructor() {
     this.setupKeyboardListener();
+    this.setupMessageListener();
     this.createDOM();
     // Don't initialize commands in constructor - Catalog API might not be ready yet
     // Commands will be initialized when palette is first opened
   }
 
+  private setupMessageListener() {
+    // Listen for messages from iframes
+    window.addEventListener('message', (event) => {
+      if (!event.data) return;
+
+      switch (event.data.type) {
+        case 'k-menu-toggle':
+          console.log('[K-MENU] Received toggle request from iframe');
+          // Remember which iframe requested the toggle (this is the active cluster context)
+          this.activeIframeSource = event.source as Window;
+          // Store the cluster ID from the message
+          if (event.data.clusterId) {
+            this.currentClusterId = event.data.clusterId;
+            console.log('[K-MENU] Cluster ID:', this.currentClusterId);
+          }
+          this.toggle();
+          break;
+      }
+    });
+
+    // Track when iframes gain/lose focus to know which is active
+    window.addEventListener('blur', () => {
+      // When main window loses focus, check if an iframe gained focus
+      setTimeout(() => {
+        const activeElement = document.activeElement;
+        if (activeElement && activeElement.tagName === 'IFRAME') {
+          console.log('[K-MENU] Iframe gained focus');
+          this.activeIframeSource = (activeElement as HTMLIFrameElement).contentWindow;
+
+          // Try to extract cluster ID from iframe's src URL
+          const iframe = activeElement as HTMLIFrameElement;
+          if (iframe.src) {
+            try {
+              const url = new URL(iframe.src);
+              const match = url.hostname.match(/^([a-f0-9]+)\.renderer\.freelens\.app$/);
+              if (match) {
+                this.currentClusterId = match[1];
+                console.log('[K-MENU] Extracted cluster ID from iframe:', this.currentClusterId);
+              }
+            } catch (err) {
+              console.warn('[K-MENU] Failed to parse iframe URL:', err);
+            }
+          }
+        }
+      }, 0);
+    });
+  }
+
+  private async loadResourcesViaIPC(showLoading = true): Promise<void> {
+    console.log("[K-MENU] Requesting resources from cluster iframe (showLoading:", showLoading, ")");
+
+    // Only show loading indicator if not a background refresh
+    if (showLoading) {
+      if (this.loadingIndicator) {
+        this.loadingIndicator.style.display = 'block';
+      }
+      if (this.resultsList) {
+        this.resultsList.style.display = 'none';
+      }
+    }
+
+    try {
+      // If we have an active iframe source, request resources from it
+      if (this.activeIframeSource) {
+        const resources = await this.requestResourcesFromIframe(this.activeIframeSource);
+        this.allResources = resources;
+      } else {
+        // No active iframe - we're in global mode, no resources available
+        console.log("[K-MENU] No active cluster iframe - global mode");
+        this.allResources = [];
+      }
+
+      // Cache the resources for this cluster
+      if (this.currentClusterId) {
+        const hadCache = this.resourceCache.has(this.currentClusterId);
+        this.resourceCache.set(this.currentClusterId, this.allResources);
+        console.log(`[K-MENU] ${hadCache ? '↻ Updated' : '💾 Cached'} ${this.allResources.length} resources`);
+      }
+
+      this.handleInput();
+    } catch (error) {
+      console.error('[K-MENU] Error loading resources:', error);
+      this.allResources = [];
+      this.handleInput();
+    } finally {
+      // Hide loading indicator
+      if (this.loadingIndicator) {
+        this.loadingIndicator.style.display = 'none';
+      }
+      if (this.resultsList) {
+        this.resultsList.style.display = 'block';
+      }
+    }
+  }
+
+  private requestResourcesFromIframe(iframe: Window): Promise<KubeResource[]> {
+    return new Promise((resolve, reject) => {
+      const requestId = Math.random().toString(36).substring(7);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Resource request timeout'));
+      }, 10000); // 10 second timeout
+
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data?.type === 'k-menu-resources-response' && event.data?.requestId === requestId) {
+          cleanup();
+
+          if (event.data.error) {
+            reject(new Error(event.data.error));
+          } else {
+            resolve(event.data.resources || []);
+          }
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', messageHandler);
+      };
+
+      window.addEventListener('message', messageHandler);
+
+      // Send request to iframe
+      console.log('[K-MENU] Sending resource request to iframe with ID:', requestId);
+      iframe.postMessage({
+        type: 'k-menu-get-resources',
+        requestId: requestId
+      }, '*');
+    });
+  }
+
   private buildNavigationCommands(): Command[] {
     const discoveredCommands: Command[] = [];
 
-    // Add cluster switching commands (available globally)
+    // Add cluster switching commands (available from anywhere)
+    console.log('[K-MENU] Current URL:', window.location.href);
+    console.log('[K-MENU] Building cluster switching commands');
+
     try {
-      const Catalog = (Renderer as any).Catalog;
-      console.log('[K-MENU] Catalog API:', Catalog);
+        const Catalog = Renderer.Catalog;
+        console.log('[K-MENU] Catalog API available:', !!Catalog);
+        console.log('[K-MENU] catalogEntities available:', !!Catalog?.catalogEntities);
 
-      if (Catalog && Catalog.catalogEntities) {
-        console.log('[K-MENU] catalogEntities:', Catalog.catalogEntities);
-        console.log('[K-MENU] catalogEntities.entities:', Catalog.catalogEntities.entities);
+        if (Catalog && Catalog.catalogEntities) {
+          // Try to get catalog entities
+          let clusters;
+          try {
+            clusters = Catalog.catalogEntities.getItemsForApiKind('entity.k8slens.dev/v1alpha1', 'KubernetesCluster');
+            console.log('[K-MENU] Successfully retrieved clusters:', clusters);
+          } catch (err) {
+            console.warn('[K-MENU] Error getting catalog entities:', err);
+            clusters = null;
+          }
 
-        // Get all cluster entities
-        const clusters = Catalog.catalogEntities.getItemsForApiKind('entity.k8slens.dev/v1alpha1', 'KubernetesCluster');
-
-        console.log('[K-MENU] Found clusters for switching:', clusters);
-
-        // Add commands for each cluster
-        if (Array.isArray(clusters) && clusters.length > 0) {
+          // Add commands for each cluster
+          if (Array.isArray(clusters) && clusters.length > 0) {
           clusters.forEach((cluster: any) => {
             console.log('[K-MENU] Processing cluster:', cluster);
             if (cluster && cluster.metadata && cluster.metadata.name) {
               const clusterName = cluster.metadata.name;
-              const clusterId = cluster.metadata.uid;
+              // Try multiple possible ID fields
+              const clusterId = cluster.id || cluster.metadata.uid || cluster.metadata.name;
+
+              console.log(`[K-MENU] Cluster ID candidates - id: ${cluster.id}, uid: ${cluster.metadata.uid}, using: ${clusterId}`);
 
               discoveredCommands.push({
                 id: `cluster-${clusterId}`,
                 label: `cluster ${clusterName}`,
                 description: `Switch to cluster: ${clusterName}`,
                 requiresResource: false,
-                execute: () => {
+                execute: async () => {
                   console.log(`[K-MENU] Switching to cluster: ${clusterName} (${clusterId})`);
-                  // Navigate to the cluster using Freelens navigation
-                  if (clusterId) {
-                    Renderer.Navigation.navigate(`/cluster/${clusterId}`);
+
+                  // Get the current cluster ID to check if we're switching
+                  const currentClusterId = this.getClusterIdFromHostname();
+                  const isCurrentCluster = currentClusterId === clusterId;
+
+                  console.log(`[K-MENU] Current cluster: ${currentClusterId}, Target cluster: ${clusterId}`);
+
+                  if (isCurrentCluster) {
+                    console.log(`[K-MENU] Already in target cluster, no navigation needed`);
+                    return;
+                  }
+
+                  // Use NavigationService for cluster navigation
+                  try {
+                    NavigationService.navigateToCluster(clusterId);
+                  } catch (err) {
+                    console.error(`[K-MENU] Navigation failed:`, err);
+                    console.error(`[K-MENU] Error details:`, err);
                   }
                 },
               });
@@ -119,67 +280,13 @@ export class KMenuPalette {
           });
         } else {
           console.log('[K-MENU] No clusters found or clusters is not an array');
+          }
+        } else {
+          console.log('[K-MENU] Catalog or catalogEntities not available');
         }
-      } else {
-        console.log('[K-MENU] Catalog or catalogEntities not available');
-      }
-    } catch (error) {
-      console.warn('[K-MENU] Error building cluster commands:', error);
-    }
-
-    // Add resource navigation commands (only when in cluster context)
-    const K8sApi = Renderer.K8sApi as any;
-
-    if (!K8sApi) {
-      console.warn('[K-MENU] Renderer.K8sApi not available, cannot build navigation commands');
-      return discoveredCommands;
-    }
-
-    // Get all store keys dynamically
-    const allKeys = Object.keys(K8sApi);
-    const storeKeys = allKeys.filter(key => key.endsWith('Store'));
-
-    console.log('[K-MENU] Discovered stores:', storeKeys);
-
-    // For each store, try to build a navigation command
-    storeKeys.forEach(storeKey => {
-      try {
-        const store = K8sApi[storeKey];
-
-        // Check if store has an API with a kind
-        if (!store || !store.api || !store.api.kind) {
-          return;
-        }
-
-        const kind = store.api.kind;
-
-        // Try to derive the path for this resource type
-        const path = this.getListPath({ kind } as KubeResource);
-
-        if (!path) {
-          console.log(`[K-MENU] No path mapping found for ${kind} (from ${storeKey})`);
-          return;
-        }
-
-        // Derive a friendly label from the kind
-        const label = kind.toLowerCase() + 's';
-
-        discoveredCommands.push({
-          id: `goto-${label}`,
-          label,
-          description: `Go to ${kind}s view`,
-          requiresResource: false,
-          execute: () => {
-            console.log(`[K-MENU] Navigating to ${kind}s view at ${path}`);
-            Renderer.Navigation.navigate(path);
-          },
-        });
-
-        console.log(`[K-MENU] Added navigation command: /${label} -> ${path} (${kind})`);
       } catch (error) {
-        console.warn(`[K-MENU] Error processing store ${storeKey}:`, error);
+        console.warn('[K-MENU] Error building cluster commands:', error);
       }
-    });
 
     // Sort commands alphabetically by label
     discoveredCommands.sort((a, b) => a.label.localeCompare(b.label));
@@ -206,67 +313,10 @@ export class KMenuPalette {
             console.log('[K-MENU] Opening logs for pod:', resource.name, 'in namespace:', resource.namespace);
 
             try {
-              // Get the full Pod object from the store
-              const K8sApi = Renderer.K8sApi as any;
-              const podStore = K8sApi.podsStore;
-
-              if (!podStore) {
-                console.error('[K-MENU] Pod store not available. K8sApi:', K8sApi);
-                throw new Error('Pod store not available');
-              }
-
-              console.log('[K-MENU] Listing pods in namespace:', resource.namespace);
-
-              // List pods in the namespace and find ours
-              const pods = await podStore.api.list(resource.namespace);
-              console.log('[K-MENU] Found', pods.length, 'pods in namespace');
-
-              const pod = pods.find((p: any) => p.getName() === resource.name);
-
-              if (!pod) {
-                console.error('[K-MENU] Pod not found. Available pods:', pods.map((p: any) => p.getName()));
-                throw new Error(`Pod not found: ${resource.name}`);
-              }
-
-              console.log('[K-MENU] Found pod object:', pod);
-
-              // Get the first container using getAllContainersWithType (like Freelens does)
-              const containers = pod.getAllContainersWithType?.() || pod.getAllContainers?.() || [];
-              console.log('[K-MENU] Pod has', containers.length, 'containers:', containers);
-
-              if (containers.length === 0) {
-                throw new Error('Pod has no containers');
-              }
-
-              const selectedContainer = containers[0];
-              console.log('[K-MENU] Selected container:', selectedContainer);
-
-              // Use the Freelens API to create pod logs tab
-              const Component = Renderer.Component as any;
-              console.log('[K-MENU] Component:', Component);
-              console.log('[K-MENU] logTabStore:', Component?.logTabStore);
-              console.log('[K-MENU] createPodTab:', Component?.logTabStore?.createPodTab);
-
-              if (Component.logTabStore && Component.logTabStore.createPodTab) {
-                const result = Component.logTabStore.createPodTab({
-                  selectedPod: pod,
-                  selectedContainer: selectedContainer,
-                });
-                console.log('[K-MENU] Created pod logs tab successfully. Result:', result);
-              } else {
-                console.error('[K-MENU] logTabStore.createPodTab not available');
-                console.error('[K-MENU] Available Component properties:', Object.keys(Component || {}));
-                throw new Error('Log tab creation API not available');
-              }
+              await this.openPodLogs(resource);
             } catch (error) {
               console.error('[K-MENU] Failed to open pod logs:', error);
-              console.error('[K-MENU] Error stack:', error instanceof Error ? error.stack : 'No stack');
-              const Notifications = Renderer.Component?.Notifications as any;
-              if (Notifications?.error) {
-                Notifications.error(`Failed to open logs: ${error instanceof Error ? error.message : String(error)}`);
-              } else {
-                alert(`Failed to open logs: ${error instanceof Error ? error.message : String(error)}`);
-              }
+              alert(`Failed to open logs: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
         },
@@ -279,18 +329,15 @@ export class KMenuPalette {
         execute: (resource) => {
           if (resource) {
             console.log('[K-MENU] Describing resource:', resource.name);
-            const selfLink = this.constructSelfLink(resource);
-            if (selfLink) {
-              // First navigate to list page
-              const listPath = this.getListPath(resource);
-              if (listPath) {
-                Renderer.Navigation.navigate(listPath);
-              }
-              // Then show details
-              setTimeout(() => {
-                Renderer.Navigation.showDetails(selfLink, false);
-              }, 100);
+
+            // Use stored cluster ID
+            if (!this.currentClusterId) {
+              console.error('[K-MENU] Not in cluster context');
+              return;
             }
+
+            // Use NavigationService for resource navigation
+            NavigationService.navigateToResource(this.currentClusterId, resource as K8sResource);
           }
         },
       },
@@ -362,14 +409,63 @@ export class KMenuPalette {
   }
 
   private setupKeyboardListener() {
+    console.log("[K-MENU] Setting up keyboard listener in main window");
     document.addEventListener("keydown", (event: KeyboardEvent) => {
-      // Cmd+K or Ctrl+K to toggle
-      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+      const preferences = KMenuPreferencesStore.getInstanceOrCreate<KMenuPreferencesStore>();
+
+      // Check if K-Menu is enabled
+      if (!preferences.enabled) {
+        return;
+      }
+
+      // Parse the keyboard shortcut
+      const shortcut = preferences.keyboardShortcut || "Cmd+K";
+      if (this.matchesShortcut(event, shortcut)) {
+        console.log("[K-MENU] Keyboard shortcut matched in main window:", shortcut);
         event.preventDefault();
         event.stopPropagation();
         this.toggle();
       }
     });
+    console.log("[K-MENU] Keyboard listener set up successfully");
+  }
+
+  private matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
+    // Parse shortcut like "Cmd+K", "Ctrl+Shift+P", etc.
+    const parts = shortcut.toLowerCase().split("+").map(p => p.trim());
+    const key = parts[parts.length - 1];
+    const modifiers = parts.slice(0, -1);
+
+    // Check if the key matches
+    if (event.key.toLowerCase() !== key) {
+      return false;
+    }
+
+    // Check modifiers
+    const hasCmd = modifiers.includes("cmd") || modifiers.includes("meta");
+    const hasCtrl = modifiers.includes("ctrl");
+    const hasAlt = modifiers.includes("alt");
+    const hasShift = modifiers.includes("shift");
+
+    // On Mac, Cmd is metaKey, on Windows/Linux it's usually Ctrl
+    const cmdPressed = event.metaKey || (hasCtrl && event.ctrlKey);
+    const ctrlPressed = event.ctrlKey;
+    const altPressed = event.altKey;
+    const shiftPressed = event.shiftKey;
+
+    // Match modifiers
+    if (hasCmd && !cmdPressed) return false;
+    if (hasCtrl && !ctrlPressed) return false;
+    if (hasAlt && !altPressed) return false;
+    if (hasShift && !shiftPressed) return false;
+
+    // Make sure no extra modifiers are pressed
+    if (!hasCmd && (event.metaKey || (event.ctrlKey && !hasCtrl))) return false;
+    if (!hasCtrl && event.ctrlKey && !cmdPressed) return false;
+    if (!hasAlt && event.altKey) return false;
+    if (!hasShift && event.shiftKey) return false;
+
+    return true;
   }
 
   private createDOM() {
@@ -582,6 +678,7 @@ export class KMenuPalette {
   }
 
   public toggle() {
+    console.log("[K-MENU] Toggle called, isOpen:", this.isOpen);
     if (this.isOpen) {
       this.close();
     } else {
@@ -590,42 +687,50 @@ export class KMenuPalette {
   }
 
   public async open() {
-    console.log("[K-MENU] Opening palette...");
+    console.log("[K-MENU] ========== OPENING PALETTE ==========");
+    console.log("[K-MENU] Active iframe source:", !!this.activeIframeSource);
+    console.log("[K-MENU] Current cluster ID:", this.currentClusterId);
+
+    this.isOpen = true;
+    if (this.container) {
+      this.container.style.display = "block";
+      console.log("[K-MENU] Container displayed");
+    } else {
+      console.error("[K-MENU] Container is null!");
+    }
+
+    // Focus input
+    setTimeout(() => {
+      if (this.input) {
+        this.input.focus();
+        console.log("[K-MENU] Input focused");
+      } else {
+        console.error("[K-MENU] Input is null!");
+      }
+    }, 100);
 
     // Initialize/refresh commands (including cluster switching)
     // Do this on every open to ensure Catalog API is available
     this.initializeCommands();
 
-    // Get current cluster ID from hostname
-    this.currentClusterId = this.getClusterIdFromHostname();
-    console.log("[K-MENU] Current cluster ID:", this.currentClusterId);
+    // Check if we're in a cluster context
+    // We're in cluster context if we have an active iframe (message was sent) or cluster ID is set
+    const inCluster = this.activeIframeSource !== null || this.currentClusterId !== null;
 
-    // Check if we're in a cluster context (must have valid cluster ID)
-    const inCluster = this.currentClusterId !== null;
-
-    if (!inCluster) {
-      console.log("[K-MENU] Not in cluster context - showing global mode");
-    }
-
-    this.isOpen = true;
-    if (this.container) {
-      this.container.style.display = "block";
-    }
-
-    // Focus input
-    setTimeout(() => {
-      this.input?.focus();
-    }, 100);
+    console.log("[K-MENU] In cluster context:", inCluster);
 
     // Load resources only if in a cluster context
     if (inCluster) {
+      console.log("[K-MENU] Loading resources for cluster...");
       await this.loadResources();
     } else {
+      console.log("[K-MENU] Global mode - no resources to load");
       // In global mode, just show the command list
       this.allResources = [];
     }
 
     this.renderResults();
+    console.log("[K-MENU] ========== PALETTE OPENED ==========");
   }
 
   private getClusterIdFromHostname(): string | null {
@@ -690,15 +795,38 @@ export class KMenuPalette {
   }
 
   private async loadResources() {
-    console.log("[K-MENU] Loading resources...");
+    // If we have an active cluster context, load resources via IPC
+    if (this.activeIframeSource || this.currentClusterId) {
+      // Check if we have cached resources for this cluster
+      const hasCache = this.currentClusterId && this.resourceCache.has(this.currentClusterId);
 
-    // Check if we have cached resources for this cluster
-    if (this.currentClusterId && this.resourceCache.has(this.currentClusterId)) {
-      this.allResources = this.resourceCache.get(this.currentClusterId)!;
-      console.log(`[K-MENU] Using cached resources for cluster ${this.currentClusterId}: ${this.allResources.length} items`);
+      if (hasCache) {
+        // Use cached resources immediately
+        this.allResources = this.resourceCache.get(this.currentClusterId!)!;
+        console.log(`[K-MENU] ✓ Using cache (${this.allResources.length} resources) - refreshing in background`);
+
+        // Render results immediately with cached data
+        this.renderResults();
+
+        // Refresh in background (don't show loading, don't await)
+        this.loadResourcesViaIPC(false);
+      } else {
+        // No cache, show loading and fetch
+        console.log('[K-MENU] ✗ No cache - fetching resources');
+        await this.loadResourcesViaIPC(true);
+      }
       return;
     }
 
+    // Otherwise, we're in the main window (catalog/no cluster context)
+    console.log('[K-MENU] Not in cluster context - no resources to load');
+    this.allResources = [];
+    this.handleInput();
+  }
+
+  // Old implementation kept for reference - not used anymore
+  // @ts-ignore
+  private async loadResourcesOldImpl() {
     try {
       // Show loading indicator
       if (this.loadingIndicator) {
@@ -709,9 +837,6 @@ export class KMenuPalette {
       }
 
       this.allResources = [];
-
-      // Dynamically discover all available stores from Renderer.K8sApi
-      console.log("[K-MENU] Dynamically discovering all available stores from Renderer.K8sApi...");
 
       // Get all store properties from Renderer.K8sApi that end with 'Store'
       const K8sApi = Renderer.K8sApi as any;
@@ -1930,300 +2055,125 @@ export class KMenuPalette {
     console.log("[K-MENU] Navigating to resource:", resource);
 
     try {
-      // Construct the selfLink manually
-      const selfLink = this.constructSelfLink(resource);
-      console.log("[K-MENU] Constructed selfLink:", selfLink);
-
-      if (!selfLink) {
-        console.error("[K-MENU] Could not construct selfLink for resource");
+      // Use stored cluster ID
+      if (!this.currentClusterId) {
+        console.error("[K-MENU] Not in cluster context, cannot navigate to resource");
         return;
       }
 
-      // First navigate to the list page
-      const listPath = this.getListPath(resource);
-      console.log("[K-MENU] Navigating to list page:", listPath);
-
-      if (listPath) {
-        Renderer.Navigation.navigate(listPath);
+      // Check if we have an active iframe
+      if (!this.activeIframeSource) {
+        console.error("[K-MENU] Cannot navigate: no active iframe");
+        return;
       }
 
-      // Then show the details drawer after a short delay
-      setTimeout(() => {
-        console.log("[K-MENU] Showing details with selfLink:", selfLink);
-        Renderer.Navigation.showDetails(selfLink, false);
-      }, 100);
+      // Send navigation request to cluster iframe
+      console.log("[K-MENU] Sending navigation request to iframe");
+      this.activeIframeSource.postMessage({
+        type: 'k-menu-navigate-to-resource',
+        clusterId: this.currentClusterId,
+        resource: resource
+      }, '*');
     } catch (err) {
       console.error("[K-MENU] Error navigating to resource:", err);
     }
   }
 
-  private constructSelfLink(resource: KubeResource): string {
-    // Construct selfLink based on resource type
-    // Format: /api/v1/namespaces/{namespace}/{resourceType}/{name}
-    // Or for cluster-scoped: /api/v1/{resourceType}/{name}
-
-    const { kind, name, namespace } = resource;
-
-    // Determine API base and whether resource is namespaced
-    let apiBase = '';
-    let plural = '';
-    let isNamespaced = true;
-
-    switch (kind) {
-      // Core API (v1)
-      case 'Pod':
-        apiBase = '/api/v1';
-        plural = 'pods';
-        break;
-      case 'Service':
-        apiBase = '/api/v1';
-        plural = 'services';
-        break;
-      case 'ConfigMap':
-        apiBase = '/api/v1';
-        plural = 'configmaps';
-        break;
-      case 'Secret':
-        apiBase = '/api/v1';
-        plural = 'secrets';
-        break;
-      case 'Namespace':
-        apiBase = '/api/v1';
-        plural = 'namespaces';
-        isNamespaced = false;
-        break;
-      case 'Node':
-        apiBase = '/api/v1';
-        plural = 'nodes';
-        isNamespaced = false;
-        break;
-      case 'ServiceAccount':
-        apiBase = '/api/v1';
-        plural = 'serviceaccounts';
-        break;
-      case 'PersistentVolume':
-        apiBase = '/api/v1';
-        plural = 'persistentvolumes';
-        isNamespaced = false;
-        break;
-      case 'PersistentVolumeClaim':
-        apiBase = '/api/v1';
-        plural = 'persistentvolumeclaims';
-        break;
-
-      // Apps API (apps/v1)
-      case 'Deployment':
-        apiBase = '/apis/apps/v1';
-        plural = 'deployments';
-        break;
-      case 'StatefulSet':
-        apiBase = '/apis/apps/v1';
-        plural = 'statefulsets';
-        break;
-      case 'DaemonSet':
-        apiBase = '/apis/apps/v1';
-        plural = 'daemonsets';
-        break;
-      case 'ReplicaSet':
-        apiBase = '/apis/apps/v1';
-        plural = 'replicasets';
-        break;
-
-      // Batch API (batch/v1)
-      case 'Job':
-        apiBase = '/apis/batch/v1';
-        plural = 'jobs';
-        break;
-      case 'CronJob':
-        apiBase = '/apis/batch/v1';
-        plural = 'cronjobs';
-        break;
-
-      // Networking API
-      case 'Ingress':
-        apiBase = '/apis/networking.k8s.io/v1';
-        plural = 'ingresses';
-        break;
-
-      // RBAC API
-      case 'Role':
-        apiBase = '/apis/rbac.authorization.k8s.io/v1';
-        plural = 'roles';
-        break;
-      case 'RoleBinding':
-        apiBase = '/apis/rbac.authorization.k8s.io/v1';
-        plural = 'rolebindings';
-        break;
-      case 'ClusterRole':
-        apiBase = '/apis/rbac.authorization.k8s.io/v1';
-        plural = 'clusterroles';
-        isNamespaced = false;
-        break;
-      case 'ClusterRoleBinding':
-        apiBase = '/apis/rbac.authorization.k8s.io/v1';
-        plural = 'clusterrolebindings';
-        isNamespaced = false;
-        break;
-
-      // Storage API
-      case 'StorageClass':
-        apiBase = '/apis/storage.k8s.io/v1';
-        plural = 'storageclasses';
-        isNamespaced = false;
-        break;
-
-      default:
-        console.warn(`[K-MENU] Unknown resource kind: ${kind}`);
-        return '';
-    }
-
-    // Construct the selfLink
-    if (isNamespaced && namespace) {
-      return `${apiBase}/namespaces/${namespace}/${plural}/${name}`;
-    } else {
-      return `${apiBase}/${plural}/${name}`;
-    }
-  }
-
-  private getListPath(resource: KubeResource): string {
-    // Get the list page path for the resource type
-    // NOTE: Freelens uses flat paths, not nested under /workloads/, /network/, etc.
-    switch (resource.kind) {
-      // Workloads
-      case "Pod":
-        return "/pods";
-      case "Deployment":
-        return "/deployments";
-      case "StatefulSet":
-        return "/statefulsets";
-      case "DaemonSet":
-        return "/daemonsets";
-      case "ReplicaSet":
-        return "/replicasets";
-      case "Job":
-        return "/jobs";
-      case "CronJob":
-        return "/cronjobs";
-
-      // Network
-      case "Service":
-        return "/services";
-      case "Endpoint":
-        return "/endpoints";
-      case "Ingress":
-        return "/ingresses";
-      case "IngressClass":
-        return "/ingress-classes";
-      case "NetworkPolicy":
-        return "/network-policies";
-
-      // Config
-      case "ConfigMap":
-        return "/configmaps";
-      case "Secret":
-        return "/secrets";
-      case "ResourceQuota":
-        return "/resourcequotas";
-      case "LimitRange":
-        return "/limitranges";
-      case "HorizontalPodAutoscaler":
-        return "/hpa";
-      case "PodDisruptionBudget":
-        return "/poddisruptionbudgets";
-      case "PriorityClass":
-        return "/priorityclasses";
-      case "RuntimeClass":
-        return "/runtimeclasses";
-      case "Lease":
-        return "/leases";
-
-      // Storage
-      case "PersistentVolume":
-        return "/persistentvolumes";
-      case "PersistentVolumeClaim":
-        return "/persistentvolumeclaims";
-      case "StorageClass":
-        return "/storageclasses";
-      case "VolumeAttachment":
-        return "/volumeattachments";
-
-      // Cluster
-      case "Namespace":
-        return "/namespaces";
-      case "Node":
-        return "/nodes";
-      case "Event":
-        return "/events";
-
-      // Access Control
-      case "ServiceAccount":
-        return "/serviceaccounts";
-      case "Role":
-        return "/roles";
-      case "RoleBinding":
-        return "/rolebindings";
-      case "ClusterRole":
-        return "/clusterroles";
-      case "ClusterRoleBinding":
-        return "/clusterrolebindings";
-      case "PodSecurityPolicy":
-        return "/podsecuritypolicies";
-
-      // Webhooks
-      case "MutatingWebhookConfiguration":
-        return "/mutatingwebhookconfigurations";
-      case "ValidatingWebhookConfiguration":
-        return "/validatingwebhookconfigurations";
-
-      // Custom Resource Definitions
-      case "CustomResourceDefinition":
-        return "/crd";
-
-      // Metrics (if available)
-      case "PodMetrics":
-        return "/pods";
-      case "NodeMetrics":
-        return "/nodes";
-
-      default:
-        console.warn(`[K-MENU] Unknown resource kind: ${resource.kind}`);
-        return "";
-    }
-  }
 
   private async deleteResource(resource: KubeResource): Promise<void> {
-    console.log('[K-MENU] Deleting resource:', resource);
+    console.log('[K-MENU] Requesting resource deletion from cluster iframe:', resource);
 
-    // Dynamically find the appropriate store for this resource type
-    const K8sApi = Renderer.K8sApi as any;
-    const storeKeys = Object.keys(K8sApi).filter(key => key.endsWith('Store'));
-
-    // Find store matching the resource kind
-    let store: any = null;
-    for (const key of storeKeys) {
-      const candidateStore = K8sApi[key];
-      if (candidateStore && candidateStore.api && candidateStore.api.kind === resource.kind) {
-        store = candidateStore;
-        console.log(`[K-MENU] Found store for ${resource.kind}: ${key}`);
-        break;
-      }
+    if (!this.activeIframeSource) {
+      throw new Error('No active cluster iframe');
     }
 
-    if (!store) {
-      throw new Error(`No store found for resource type: ${resource.kind}`);
-    }
-
-    // Get the actual resource object from the store
-    const items = await store.api.list(resource.namespace);
-    const item = items.find((i: any) => i.getName() === resource.name);
-
-    if (!item) {
-      throw new Error(`Resource not found: ${resource.kind}/${resource.name}`);
-    }
-
-    // Delete the resource using the store's API
-    await store.api.delete({ name: resource.name, namespace: resource.namespace });
+    await this.requestDeleteResourceFromIframe(this.activeIframeSource, resource as K8sResource);
     console.log('[K-MENU] Resource deleted successfully');
+  }
+
+  private async openPodLogs(resource: KubeResource): Promise<void> {
+    console.log('[K-MENU] Requesting logs from cluster iframe:', resource);
+
+    if (!this.activeIframeSource) {
+      throw new Error('No active cluster iframe');
+    }
+
+    await this.requestLogsFromIframe(this.activeIframeSource, resource as K8sResource);
+    console.log('[K-MENU] Logs opened successfully');
+  }
+
+  private requestDeleteResourceFromIframe(iframe: Window, resource: K8sResource): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const requestId = Math.random().toString(36).substring(7);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Delete request timeout'));
+      }, 10000); // 10 second timeout
+
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data?.type === 'k-menu-delete-response' && event.data?.requestId === requestId) {
+          cleanup();
+
+          if (event.data.error) {
+            reject(new Error(event.data.error));
+          } else {
+            resolve();
+          }
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', messageHandler);
+      };
+
+      window.addEventListener('message', messageHandler);
+
+      // Send delete request to iframe
+      console.log('[K-MENU] Sending delete request to iframe with ID:', requestId);
+      iframe.postMessage({
+        type: 'k-menu-delete-resource',
+        requestId: requestId,
+        resource: resource
+      }, '*');
+    });
+  }
+
+  private requestLogsFromIframe(iframe: Window, resource: K8sResource): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const requestId = Math.random().toString(36).substring(7);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Logs request timeout'));
+      }, 10000); // 10 second timeout
+
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data?.type === 'k-menu-logs-response' && event.data?.requestId === requestId) {
+          cleanup();
+
+          if (event.data.error) {
+            reject(new Error(event.data.error));
+          } else {
+            resolve();
+          }
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        window.removeEventListener('message', messageHandler);
+      };
+
+      window.addEventListener('message', messageHandler);
+
+      // Send logs request to iframe
+      console.log('[K-MENU] Sending logs request to iframe with ID:', requestId);
+      iframe.postMessage({
+        type: 'k-menu-open-logs',
+        requestId: requestId,
+        resource: resource
+      }, '*');
+    });
   }
 
   public destroy() {

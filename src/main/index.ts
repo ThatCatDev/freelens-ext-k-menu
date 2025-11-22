@@ -1,8 +1,8 @@
 import { Main } from "@freelensapp/extensions";
-import { ExamplePreferencesStore } from "../common/store";
+import { StoreLoaderService } from "./services/store-loader";
 
-export default class ExampleMain extends Main.LensExtension {
+export default class KMenuMain extends Main.LensExtension {
   async onActivate() {
-    await ExamplePreferencesStore.getInstanceOrCreate().loadExtension(this);
+    await StoreLoaderService.loadStores(this);
   }
 }
