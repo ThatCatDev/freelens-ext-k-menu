@@ -75,7 +75,7 @@ jobs:
 
       - name: Get extension path
         shell: bash
-        run: echo "EXTENSION_PATH=$(find $(pwd) -name '*.tgz')" >> ${GITHUB_ENV}
+        run: echo "EXTENSION_PATH=$(find $(pwd) -maxdepth 1 -name '*.tgz')" >> ${GITHUB_ENV}
 
       - name: Checkout app
         if: matrix.freelens_version != 'latest'
