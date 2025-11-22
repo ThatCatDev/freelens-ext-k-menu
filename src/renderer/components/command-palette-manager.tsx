@@ -3,9 +3,9 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-import React from "react";
-import { makeObservable, observable, action } from "mobx";
+import { action, makeObservable, observable } from "mobx";
 import { observer } from "mobx-react";
+import React from "react";
 import { CommandPalette } from "./command-palette";
 
 class CommandPaletteStore {

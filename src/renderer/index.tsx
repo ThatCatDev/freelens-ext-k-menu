@@ -76,22 +76,25 @@ export default class KMenuRenderer extends Renderer.LensExtension {
         const clusterId = match ? match[1] : null;
 
         // Send message to parent window to toggle K-Menu with cluster ID
-        window.parent.postMessage({
-          type: 'k-menu-toggle',
-          clusterId: clusterId
-        }, '*');
+        window.parent.postMessage(
+          {
+            type: "k-menu-toggle",
+            clusterId: clusterId,
+          },
+          "*",
+        );
       }
     });
 
     // Listen for resource requests from parent window
     window.addEventListener("message", async (event: MessageEvent) => {
       // Handle get resources request
-      if (event.data?.type === 'k-menu-get-resources') {
+      if (event.data?.type === "k-menu-get-resources") {
         console.log("[K-MENU-IFRAME] Received resource request from parent");
 
         try {
           // Import the service dynamically to avoid loading it in main window
-          const { K8sResourceService } = await import('./services/k8s-resource-service');
+          const { K8sResourceService } = await import("./services/k8s-resource-service");
 
           // Fetch resources from stores (which ARE available in cluster iframe)
           const resources = await K8sResourceService.getAllResources();
@@ -99,30 +102,36 @@ export default class KMenuRenderer extends Renderer.LensExtension {
           console.log(`[K-MENU-IFRAME] Sending ${resources.length} resources back to parent`);
 
           // Send resources back to parent
-          event.source?.postMessage({
-            type: 'k-menu-resources-response',
-            requestId: event.data.requestId,
-            resources: resources
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-resources-response",
+              requestId: event.data.requestId,
+              resources: resources,
+            },
+            { targetOrigin: "*" } as any,
+          );
         } catch (err) {
           console.error("[K-MENU-IFRAME] Error fetching resources:", err);
 
           // Send error back to parent
-          event.source?.postMessage({
-            type: 'k-menu-resources-response',
-            requestId: event.data.requestId,
-            error: String(err)
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-resources-response",
+              requestId: event.data.requestId,
+              error: String(err),
+            },
+            { targetOrigin: "*" } as any,
+          );
         }
         return;
       }
 
       // Handle delete resource request
-      if (event.data?.type === 'k-menu-delete-resource') {
+      if (event.data?.type === "k-menu-delete-resource") {
         console.log("[K-MENU-IFRAME] Received delete request from parent");
 
         try {
-          const { K8sResourceService } = await import('./services/k8s-resource-service');
+          const { K8sResourceService } = await import("./services/k8s-resource-service");
 
           // Delete the resource
           await K8sResourceService.deleteResource(event.data.resource);
@@ -130,29 +139,35 @@ export default class KMenuRenderer extends Renderer.LensExtension {
           console.log("[K-MENU-IFRAME] Resource deleted successfully");
 
           // Send success response back to parent
-          event.source?.postMessage({
-            type: 'k-menu-delete-response',
-            requestId: event.data.requestId
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-delete-response",
+              requestId: event.data.requestId,
+            },
+            { targetOrigin: "*" } as any,
+          );
         } catch (err) {
           console.error("[K-MENU-IFRAME] Error deleting resource:", err);
 
           // Send error back to parent
-          event.source?.postMessage({
-            type: 'k-menu-delete-response',
-            requestId: event.data.requestId,
-            error: String(err)
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-delete-response",
+              requestId: event.data.requestId,
+              error: String(err),
+            },
+            { targetOrigin: "*" } as any,
+          );
         }
         return;
       }
 
       // Handle navigate to resource request
-      if (event.data?.type === 'k-menu-navigate-to-resource') {
+      if (event.data?.type === "k-menu-navigate-to-resource") {
         console.log("[K-MENU-IFRAME] Received navigation request from parent:", event.data.resource);
 
         try {
-          const { NavigationService } = await import('./services/navigation-service');
+          const { NavigationService } = await import("./services/navigation-service");
 
           // Navigate to the resource (this happens in the iframe where navigation works)
           NavigationService.navigateToResource(event.data.clusterId, event.data.resource);
@@ -165,11 +180,11 @@ export default class KMenuRenderer extends Renderer.LensExtension {
       }
 
       // Handle open logs request
-      if (event.data?.type === 'k-menu-open-logs') {
+      if (event.data?.type === "k-menu-open-logs") {
         console.log("[K-MENU-IFRAME] Received logs request from parent:", event.data.resource);
 
         try {
-          const { LogsService } = await import('./services/logs-service');
+          const { LogsService } = await import("./services/logs-service");
 
           // Open logs in the iframe where the log APIs work
           await LogsService.openPodLogs(event.data.resource);
@@ -177,19 +192,25 @@ export default class KMenuRenderer extends Renderer.LensExtension {
           console.log("[K-MENU-IFRAME] Logs opened successfully");
 
           // Send success response back to parent
-          event.source?.postMessage({
-            type: 'k-menu-logs-response',
-            requestId: event.data.requestId
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-logs-response",
+              requestId: event.data.requestId,
+            },
+            { targetOrigin: "*" } as any,
+          );
         } catch (err) {
           console.error("[K-MENU-IFRAME] Error opening logs:", err);
 
           // Send error back to parent
-          event.source?.postMessage({
-            type: 'k-menu-logs-response',
-            requestId: event.data.requestId,
-            error: String(err)
-          }, { targetOrigin: '*' } as any);
+          event.source?.postMessage(
+            {
+              type: "k-menu-logs-response",
+              requestId: event.data.requestId,
+              error: String(err),
+            },
+            { targetOrigin: "*" } as any,
+          );
         }
         return;
       }
@@ -199,7 +220,10 @@ export default class KMenuRenderer extends Renderer.LensExtension {
   }
 
   private matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
-    const parts = shortcut.toLowerCase().split("+").map(p => p.trim());
+    const parts = shortcut
+      .toLowerCase()
+      .split("+")
+      .map((p) => p.trim());
     const key = parts[parts.length - 1];
     const modifiers = parts.slice(0, -1);
 

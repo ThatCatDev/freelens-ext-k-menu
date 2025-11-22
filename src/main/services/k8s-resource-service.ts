@@ -19,13 +19,13 @@ export class K8sResourceService {
     const K8sApi = (Main as any).K8sApi;
 
     if (!K8sApi) {
-      console.warn('[K-MENU] K8sApi not available in main process');
-      throw new Error('K8sApi not available');
+      console.warn("[K-MENU] K8sApi not available in main process");
+      throw new Error("K8sApi not available");
     }
 
     const allResources: K8sResource[] = [];
     const allKeys = Object.keys(K8sApi);
-    const storeKeys = allKeys.filter(key => key.endsWith('Store'));
+    const storeKeys = allKeys.filter((key) => key.endsWith("Store"));
 
     console.log(`[K-MENU] Fetching resources from ${storeKeys.length} stores...`);
 
@@ -48,11 +48,11 @@ export class K8sResourceService {
           items.forEach((item: any) => {
             if (item && item.metadata) {
               allResources.push({
-                kind: item.kind || store.api?.kind || 'Unknown',
+                kind: item.kind || store.api?.kind || "Unknown",
                 name: item.getName ? item.getName() : item.metadata.name,
                 namespace: item.getNs ? item.getNs() : item.metadata.namespace,
                 uid: item.getId ? item.getId() : item.metadata.uid,
-                apiVersion: item.apiVersion || store.api?.apiBase || '',
+                apiVersion: item.apiVersion || store.api?.apiBase || "",
               });
             }
           });
@@ -64,7 +64,9 @@ export class K8sResourceService {
       }
     }
 
-    console.log(`[K-MENU] Fetched ${allResources.length} resources from ${processedStores} stores (${skippedStores} skipped)`);
+    console.log(
+      `[K-MENU] Fetched ${allResources.length} resources from ${processedStores} stores (${skippedStores} skipped)`,
+    );
     return allResources;
   }
 
@@ -75,8 +77,8 @@ export class K8sResourceService {
     const K8sApi = (Main as any).K8sApi;
 
     if (!K8sApi) {
-      console.error('[K-MENU] K8sApi not available in main process');
-      throw new Error('K8sApi not available');
+      console.error("[K-MENU] K8sApi not available in main process");
+      throw new Error("K8sApi not available");
     }
 
     // Find the appropriate store for this resource type
@@ -91,7 +93,7 @@ export class K8sResourceService {
     console.log(`[K-MENU] Deleting resource:`, resource);
     await store.api.delete({
       name: resource.name,
-      namespace: resource.namespace
+      namespace: resource.namespace,
     });
 
     console.log(`[K-MENU] Successfully deleted resource`);

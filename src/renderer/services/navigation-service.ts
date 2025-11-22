@@ -96,9 +96,9 @@ export class NavigationService {
    */
   private static constructSelfLink(resource: KubeResource): string {
     // Construct from apiVersion - this is the standard Kubernetes selfLink format
-    const [group, version] = resource.apiVersion.includes('/')
-      ? resource.apiVersion.split('/')
-      : ['', resource.apiVersion];
+    const [group, version] = resource.apiVersion.includes("/")
+      ? resource.apiVersion.split("/")
+      : ["", resource.apiVersion];
 
     const apiBase = group ? `/apis/${group}/${version}` : `/api/${version}`;
     const plural = this.pluralize(resource.kind);
@@ -117,15 +117,14 @@ export class NavigationService {
     const lower = kind.toLowerCase();
 
     // Special cases
-    if (lower === 'endpoints') return 'endpoints';
-    if (lower === 'ingress') return 'ingresses';
-    if (lower.endsWith('class')) return lower + 'es';
-    if (lower.endsWith('policy')) return lower.slice(0, -1) + 'ies';
+    if (lower === "endpoints") return "endpoints";
+    if (lower === "ingress") return "ingresses";
+    if (lower.endsWith("class")) return lower + "es";
+    if (lower.endsWith("policy")) return lower.slice(0, -1) + "ies";
 
     // Default pluralization
-    if (lower.endsWith('s')) return lower + 'es';
-    if (lower.endsWith('y')) return lower.slice(0, -1) + 'ies';
-    return lower + 's';
+    if (lower.endsWith("s")) return lower + "es";
+    if (lower.endsWith("y")) return lower.slice(0, -1) + "ies";
+    return lower + "s";
   }
-
 }

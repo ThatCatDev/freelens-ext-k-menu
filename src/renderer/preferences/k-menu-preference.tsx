@@ -58,7 +58,7 @@ export const KMenuPreferenceInput = observer(() => {
           type="text"
           readOnly
           placeholder="Click and press keys..."
-          value={isRecording ? "Press keys..." : (preferences.keyboardShortcut || "Cmd+K")}
+          value={isRecording ? "Press keys..." : preferences.keyboardShortcut || "Cmd+K"}
           onFocus={() => setIsRecording(true)}
           onBlur={() => setIsRecording(false)}
           onKeyDown={handleKeyDown}

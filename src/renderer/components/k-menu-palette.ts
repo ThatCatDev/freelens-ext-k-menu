@@ -5,6 +5,7 @@
 import { Renderer } from "@freelensapp/extensions";
 import { KMenuPreferencesStore } from "../../common/store";
 import { NavigationService } from "../services/navigation-service";
+
 import type { K8sResource } from "../services/k8s-resource-service";
 
 interface KubeResource {
@@ -22,7 +23,7 @@ interface SearchResult {
 }
 
 interface Filter {
-  type: 'kind' | 'namespace' | 'node';
+  type: "kind" | "namespace" | "node";
   value: string;
 }
 
@@ -54,7 +55,7 @@ export class KMenuPalette {
   // Autocomplete state
   private autocompleteSuggestions: string[] = [];
   private autocompleteSelectedIndex: number = -1;
-  private autocompleteFilterType: 'kind' | 'namespace' | 'node' | null = null;
+  private autocompleteFilterType: "kind" | "namespace" | "node" | null = null;
 
   // Command mode state
   private isCommandMode = false;
@@ -83,18 +84,18 @@ export class KMenuPalette {
 
   private setupMessageListener() {
     // Listen for messages from iframes
-    window.addEventListener('message', (event) => {
+    window.addEventListener("message", (event) => {
       if (!event.data) return;
 
       switch (event.data.type) {
-        case 'k-menu-toggle':
-          console.log('[K-MENU] Received toggle request from iframe');
+        case "k-menu-toggle":
+          console.log("[K-MENU] Received toggle request from iframe");
           // Remember which iframe requested the toggle (this is the active cluster context)
           this.activeIframeSource = event.source as Window;
           // Store the cluster ID from the message
           if (event.data.clusterId) {
             this.currentClusterId = event.data.clusterId;
-            console.log('[K-MENU] Cluster ID:', this.currentClusterId);
+            console.log("[K-MENU] Cluster ID:", this.currentClusterId);
           }
           this.toggle();
           break;
@@ -102,12 +103,12 @@ export class KMenuPalette {
     });
 
     // Track when iframes gain/lose focus to know which is active
-    window.addEventListener('blur', () => {
+    window.addEventListener("blur", () => {
       // When main window loses focus, check if an iframe gained focus
       setTimeout(() => {
         const activeElement = document.activeElement;
-        if (activeElement && activeElement.tagName === 'IFRAME') {
-          console.log('[K-MENU] Iframe gained focus');
+        if (activeElement && activeElement.tagName === "IFRAME") {
+          console.log("[K-MENU] Iframe gained focus");
           this.activeIframeSource = (activeElement as HTMLIFrameElement).contentWindow;
 
           // Try to extract cluster ID from iframe's src URL
@@ -118,10 +119,10 @@ export class KMenuPalette {
               const match = url.hostname.match(/^([a-f0-9]+)\.renderer\.freelens\.app$/);
               if (match) {
                 this.currentClusterId = match[1];
-                console.log('[K-MENU] Extracted cluster ID from iframe:', this.currentClusterId);
+                console.log("[K-MENU] Extracted cluster ID from iframe:", this.currentClusterId);
               }
             } catch (err) {
-              console.warn('[K-MENU] Failed to parse iframe URL:', err);
+              console.warn("[K-MENU] Failed to parse iframe URL:", err);
             }
           }
         }
@@ -135,10 +136,10 @@ export class KMenuPalette {
     // Only show loading indicator if not a background refresh
     if (showLoading) {
       if (this.loadingIndicator) {
-        this.loadingIndicator.style.display = 'block';
+        this.loadingIndicator.style.display = "block";
       }
       if (this.resultsList) {
-        this.resultsList.style.display = 'none';
+        this.resultsList.style.display = "none";
       }
     }
 
@@ -157,21 +158,21 @@ export class KMenuPalette {
       if (this.currentClusterId) {
         const hadCache = this.resourceCache.has(this.currentClusterId);
         this.resourceCache.set(this.currentClusterId, this.allResources);
-        console.log(`[K-MENU] ${hadCache ? '↻ Updated' : '💾 Cached'} ${this.allResources.length} resources`);
+        console.log(`[K-MENU] ${hadCache ? "↻ Updated" : "💾 Cached"} ${this.allResources.length} resources`);
       }
 
       this.handleInput();
     } catch (error) {
-      console.error('[K-MENU] Error loading resources:', error);
+      console.error("[K-MENU] Error loading resources:", error);
       this.allResources = [];
       this.handleInput();
     } finally {
       // Hide loading indicator
       if (this.loadingIndicator) {
-        this.loadingIndicator.style.display = 'none';
+        this.loadingIndicator.style.display = "none";
       }
       if (this.resultsList) {
-        this.resultsList.style.display = 'block';
+        this.resultsList.style.display = "block";
       }
     }
   }
@@ -181,11 +182,11 @@ export class KMenuPalette {
       const requestId = Math.random().toString(36).substring(7);
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error('Resource request timeout'));
+        reject(new Error("Resource request timeout"));
       }, 10000); // 10 second timeout
 
       const messageHandler = (event: MessageEvent) => {
-        if (event.data?.type === 'k-menu-resources-response' && event.data?.requestId === requestId) {
+        if (event.data?.type === "k-menu-resources-response" && event.data?.requestId === requestId) {
           cleanup();
 
           if (event.data.error) {
@@ -198,17 +199,20 @@ export class KMenuPalette {
 
       const cleanup = () => {
         clearTimeout(timeout);
-        window.removeEventListener('message', messageHandler);
+        window.removeEventListener("message", messageHandler);
       };
 
-      window.addEventListener('message', messageHandler);
+      window.addEventListener("message", messageHandler);
 
       // Send request to iframe
-      console.log('[K-MENU] Sending resource request to iframe with ID:', requestId);
-      iframe.postMessage({
-        type: 'k-menu-get-resources',
-        requestId: requestId
-      }, '*');
+      console.log("[K-MENU] Sending resource request to iframe with ID:", requestId);
+      iframe.postMessage(
+        {
+          type: "k-menu-get-resources",
+          requestId: requestId,
+        },
+        "*",
+      );
     });
   }
 
@@ -216,35 +220,37 @@ export class KMenuPalette {
     const discoveredCommands: Command[] = [];
 
     // Add cluster switching commands (available from anywhere)
-    console.log('[K-MENU] Current URL:', window.location.href);
-    console.log('[K-MENU] Building cluster switching commands');
+    console.log("[K-MENU] Current URL:", window.location.href);
+    console.log("[K-MENU] Building cluster switching commands");
 
     try {
-        const Catalog = Renderer.Catalog;
-        console.log('[K-MENU] Catalog API available:', !!Catalog);
-        console.log('[K-MENU] catalogEntities available:', !!Catalog?.catalogEntities);
+      const Catalog = Renderer.Catalog;
+      console.log("[K-MENU] Catalog API available:", !!Catalog);
+      console.log("[K-MENU] catalogEntities available:", !!Catalog?.catalogEntities);
 
-        if (Catalog && Catalog.catalogEntities) {
-          // Try to get catalog entities
-          let clusters;
-          try {
-            clusters = Catalog.catalogEntities.getItemsForApiKind('entity.k8slens.dev/v1alpha1', 'KubernetesCluster');
-            console.log('[K-MENU] Successfully retrieved clusters:', clusters);
-          } catch (err) {
-            console.warn('[K-MENU] Error getting catalog entities:', err);
-            clusters = null;
-          }
+      if (Catalog && Catalog.catalogEntities) {
+        // Try to get catalog entities
+        let clusters;
+        try {
+          clusters = Catalog.catalogEntities.getItemsForApiKind("entity.k8slens.dev/v1alpha1", "KubernetesCluster");
+          console.log("[K-MENU] Successfully retrieved clusters:", clusters);
+        } catch (err) {
+          console.warn("[K-MENU] Error getting catalog entities:", err);
+          clusters = null;
+        }
 
-          // Add commands for each cluster
-          if (Array.isArray(clusters) && clusters.length > 0) {
+        // Add commands for each cluster
+        if (Array.isArray(clusters) && clusters.length > 0) {
           clusters.forEach((cluster: any) => {
-            console.log('[K-MENU] Processing cluster:', cluster);
+            console.log("[K-MENU] Processing cluster:", cluster);
             if (cluster && cluster.metadata && cluster.metadata.name) {
               const clusterName = cluster.metadata.name;
               // Try multiple possible ID fields
               const clusterId = cluster.id || cluster.metadata.uid || cluster.metadata.name;
 
-              console.log(`[K-MENU] Cluster ID candidates - id: ${cluster.id}, uid: ${cluster.metadata.uid}, using: ${clusterId}`);
+              console.log(
+                `[K-MENU] Cluster ID candidates - id: ${cluster.id}, uid: ${cluster.metadata.uid}, using: ${clusterId}`,
+              );
 
               discoveredCommands.push({
                 id: `cluster-${clusterId}`,
@@ -279,14 +285,14 @@ export class KMenuPalette {
             }
           });
         } else {
-          console.log('[K-MENU] No clusters found or clusters is not an array');
-          }
-        } else {
-          console.log('[K-MENU] Catalog or catalogEntities not available');
+          console.log("[K-MENU] No clusters found or clusters is not an array");
         }
-      } catch (error) {
-        console.warn('[K-MENU] Error building cluster commands:', error);
+      } else {
+        console.log("[K-MENU] Catalog or catalogEntities not available");
       }
+    } catch (error) {
+      console.warn("[K-MENU] Error building cluster commands:", error);
+    }
 
     // Sort commands alphabetically by label
     discoveredCommands.sort((a, b) => a.label.localeCompare(b.label));
@@ -303,36 +309,36 @@ export class KMenuPalette {
       ...navigationCommands,
       // Resource action commands
       {
-        id: 'logs',
-        label: 'logs',
-        description: 'View pod logs',
+        id: "logs",
+        label: "logs",
+        description: "View pod logs",
         requiresResource: true,
-        resourceTypes: ['Pod'],
+        resourceTypes: ["Pod"],
         execute: async (resource) => {
-          if (resource && resource.kind === 'Pod') {
-            console.log('[K-MENU] Opening logs for pod:', resource.name, 'in namespace:', resource.namespace);
+          if (resource && resource.kind === "Pod") {
+            console.log("[K-MENU] Opening logs for pod:", resource.name, "in namespace:", resource.namespace);
 
             try {
               await this.openPodLogs(resource);
             } catch (error) {
-              console.error('[K-MENU] Failed to open pod logs:', error);
+              console.error("[K-MENU] Failed to open pod logs:", error);
               alert(`Failed to open logs: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
         },
       },
       {
-        id: 'describe',
-        label: 'describe',
-        description: 'Show detailed resource information',
+        id: "describe",
+        label: "describe",
+        description: "Show detailed resource information",
         requiresResource: true,
         execute: (resource) => {
           if (resource) {
-            console.log('[K-MENU] Describing resource:', resource.name);
+            console.log("[K-MENU] Describing resource:", resource.name);
 
             // Use stored cluster ID
             if (!this.currentClusterId) {
-              console.error('[K-MENU] Not in cluster context');
+              console.error("[K-MENU] Not in cluster context");
               return;
             }
 
@@ -342,9 +348,9 @@ export class KMenuPalette {
         },
       },
       {
-        id: 'delete',
-        label: 'delete',
-        description: 'Delete the selected resource (requires confirmation)',
+        id: "delete",
+        label: "delete",
+        description: "Delete the selected resource (requires confirmation)",
         requiresResource: true,
         execute: async (resource) => {
           if (resource) {
@@ -353,11 +359,11 @@ export class KMenuPalette {
               : `${resource.kind}/${resource.name}`;
 
             const confirmed = confirm(
-              `⚠️ Are you sure you want to delete ${resourceName}?\n\nThis action cannot be undone.`
+              `⚠️ Are you sure you want to delete ${resourceName}?\n\nThis action cannot be undone.`,
             );
 
             if (confirmed) {
-              console.log('[K-MENU] Deleting resource:', resource.name);
+              console.log("[K-MENU] Deleting resource:", resource.name);
 
               try {
                 await this.deleteResource(resource);
@@ -365,7 +371,7 @@ export class KMenuPalette {
                 // Refresh the resource list
                 await this.refreshResources();
               } catch (err) {
-                console.error('[K-MENU] Error deleting resource:', err);
+                console.error("[K-MENU] Error deleting resource:", err);
                 alert(`✗ Failed to delete ${resourceName}: ${err}`);
               }
             }
@@ -373,34 +379,34 @@ export class KMenuPalette {
         },
       },
       {
-        id: 'refresh',
-        label: 'refresh',
-        description: 'Reload all resources from the cluster',
+        id: "refresh",
+        label: "refresh",
+        description: "Reload all resources from the cluster",
         requiresResource: false,
         execute: async () => {
-          console.log('[K-MENU] Refreshing resources...');
+          console.log("[K-MENU] Refreshing resources...");
 
           // Show loading indicator
           if (this.loadingIndicator) {
-            this.loadingIndicator.style.display = 'block';
+            this.loadingIndicator.style.display = "block";
           }
           if (this.resultsList) {
-            this.resultsList.style.display = 'none';
+            this.resultsList.style.display = "none";
           }
 
           try {
             await this.refreshResources();
-            alert('✓ Resources refreshed successfully!');
+            alert("✓ Resources refreshed successfully!");
           } catch (err) {
-            console.error('[K-MENU] Error refreshing:', err);
+            console.error("[K-MENU] Error refreshing:", err);
             alert(`✗ Failed to refresh resources: ${err}`);
           } finally {
             // Hide loading indicator
             if (this.loadingIndicator) {
-              this.loadingIndicator.style.display = 'none';
+              this.loadingIndicator.style.display = "none";
             }
             if (this.resultsList) {
-              this.resultsList.style.display = 'block';
+              this.resultsList.style.display = "block";
             }
           }
         },
@@ -432,7 +438,10 @@ export class KMenuPalette {
 
   private matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
     // Parse shortcut like "Cmd+K", "Ctrl+Shift+P", etc.
-    const parts = shortcut.toLowerCase().split("+").map(p => p.trim());
+    const parts = shortcut
+      .toLowerCase()
+      .split("+")
+      .map((p) => p.trim());
     const key = parts[parts.length - 1];
     const modifiers = parts.slice(0, -1);
 
@@ -768,13 +777,12 @@ export class KMenuPalette {
     this.renderFilterTags();
   }
 
-
   // Helper function to fetch with retry and exponential backoff
   private async fetchWithRetry<T>(
     fetchFn: () => Promise<T>,
     resourceKind: string,
     maxRetries: number = 3,
-    initialDelayMs: number = 500
+    initialDelayMs: number = 500,
   ): Promise<T | null> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -786,9 +794,12 @@ export class KMenuPalette {
         }
 
         const delayMs = initialDelayMs * Math.pow(2, attempt);
-        console.warn(`[K-MENU] Failed to fetch ${resourceKind} (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms...`, err);
+        console.warn(
+          `[K-MENU] Failed to fetch ${resourceKind} (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms...`,
+          err,
+        );
 
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
     return null;
@@ -812,14 +823,14 @@ export class KMenuPalette {
         this.loadResourcesViaIPC(false);
       } else {
         // No cache, show loading and fetch
-        console.log('[K-MENU] ✗ No cache - fetching resources');
+        console.log("[K-MENU] ✗ No cache - fetching resources");
         await this.loadResourcesViaIPC(true);
       }
       return;
     }
 
     // Otherwise, we're in the main window (catalog/no cluster context)
-    console.log('[K-MENU] Not in cluster context - no resources to load');
+    console.log("[K-MENU] Not in cluster context - no resources to load");
     this.allResources = [];
     this.handleInput();
   }
@@ -830,10 +841,10 @@ export class KMenuPalette {
     try {
       // Show loading indicator
       if (this.loadingIndicator) {
-        this.loadingIndicator.style.display = 'block';
+        this.loadingIndicator.style.display = "block";
       }
       if (this.resultsList) {
-        this.resultsList.style.display = 'none';
+        this.resultsList.style.display = "none";
       }
 
       this.allResources = [];
@@ -843,53 +854,53 @@ export class KMenuPalette {
 
       // Debug: log all keys
       const allKeys = Object.keys(K8sApi);
-      console.log('[K-MENU] All K8sApi keys:', allKeys);
+      console.log("[K-MENU] All K8sApi keys:", allKeys);
 
-      const storeKeys = allKeys.filter(key => key.endsWith('Store'));
-      console.log('[K-MENU] Store keys found:', storeKeys);
+      const storeKeys = allKeys.filter((key) => key.endsWith("Store"));
+      console.log("[K-MENU] Store keys found:", storeKeys);
 
       // Manually build the stores list from known Freelens exports
       const stores = [
         // Workloads
-        { store: K8sApi.podsStore, kind: 'Pod' },
-        { store: K8sApi.deploymentStore, kind: 'Deployment' },
-        { store: K8sApi.statefulSetStore, kind: 'StatefulSet' },
-        { store: K8sApi.daemonSetStore, kind: 'DaemonSet' },
-        { store: K8sApi.replicaSetStore, kind: 'ReplicaSet' },
-        { store: K8sApi.jobStore, kind: 'Job' },
-        { store: K8sApi.cronJobStore, kind: 'CronJob' },
+        { store: K8sApi.podsStore, kind: "Pod" },
+        { store: K8sApi.deploymentStore, kind: "Deployment" },
+        { store: K8sApi.statefulSetStore, kind: "StatefulSet" },
+        { store: K8sApi.daemonSetStore, kind: "DaemonSet" },
+        { store: K8sApi.replicaSetStore, kind: "ReplicaSet" },
+        { store: K8sApi.jobStore, kind: "Job" },
+        { store: K8sApi.cronJobStore, kind: "CronJob" },
         // Network
-        { store: K8sApi.serviceStore, kind: 'Service' },
-        { store: K8sApi.ingressStore, kind: 'Ingress' },
-        { store: K8sApi.networkPolicyStore, kind: 'NetworkPolicy' },
+        { store: K8sApi.serviceStore, kind: "Service" },
+        { store: K8sApi.ingressStore, kind: "Ingress" },
+        { store: K8sApi.networkPolicyStore, kind: "NetworkPolicy" },
         // Config & Storage
-        { store: K8sApi.configMapStore, kind: 'ConfigMap' },
-        { store: K8sApi.secretsStore, kind: 'Secret' },
-        { store: K8sApi.persistentVolumeStore, kind: 'PersistentVolume' },
-        { store: K8sApi.pvcStore, kind: 'PersistentVolumeClaim' },
-        { store: K8sApi.storageClassStore, kind: 'StorageClass' },
+        { store: K8sApi.configMapStore, kind: "ConfigMap" },
+        { store: K8sApi.secretsStore, kind: "Secret" },
+        { store: K8sApi.persistentVolumeStore, kind: "PersistentVolume" },
+        { store: K8sApi.pvcStore, kind: "PersistentVolumeClaim" },
+        { store: K8sApi.storageClassStore, kind: "StorageClass" },
         // Access Control
-        { store: K8sApi.serviceAccountsStore, kind: 'ServiceAccount' },
-        { store: K8sApi.roleStore, kind: 'Role' },
-        { store: K8sApi.roleBindingStore, kind: 'RoleBinding' },
-        { store: K8sApi.clusterRoleStore, kind: 'ClusterRole' },
-        { store: K8sApi.clusterRoleBindingStore, kind: 'ClusterRoleBinding' },
+        { store: K8sApi.serviceAccountsStore, kind: "ServiceAccount" },
+        { store: K8sApi.roleStore, kind: "Role" },
+        { store: K8sApi.roleBindingStore, kind: "RoleBinding" },
+        { store: K8sApi.clusterRoleStore, kind: "ClusterRole" },
+        { store: K8sApi.clusterRoleBindingStore, kind: "ClusterRoleBinding" },
         // Cluster
-        { store: K8sApi.namespaceStore, kind: 'Namespace' },
-        { store: K8sApi.nodesStore, kind: 'Node' },
-        { store: K8sApi.limitRangeStore, kind: 'LimitRange' },
-        { store: K8sApi.resourceQuotaStore, kind: 'ResourceQuota' },
+        { store: K8sApi.namespaceStore, kind: "Namespace" },
+        { store: K8sApi.nodesStore, kind: "Node" },
+        { store: K8sApi.limitRangeStore, kind: "LimitRange" },
+        { store: K8sApi.resourceQuotaStore, kind: "ResourceQuota" },
       ].filter(({ store }) => store && store.api);
 
       console.log(`[K-MENU] Using ${stores.length} registered stores`);
 
       // Also try to add any additional stores we find dynamically
-      storeKeys.forEach(key => {
+      storeKeys.forEach((key) => {
         const store = K8sApi[key];
         if (store && store.api && store.api.kind) {
           const kind = store.api.kind;
           // Only add if not already in the list
-          if (!stores.find(s => s.kind === kind)) {
+          if (!stores.find((s) => s.kind === kind)) {
             console.log(`[K-MENU] Found additional store: ${key} (${kind})`);
             stores.push({ store, kind });
           }
@@ -911,7 +922,7 @@ export class KMenuPalette {
           },
           kind,
           3, // max retries
-          500 // initial delay in ms (500ms, 1s, 2s)
+          500, // initial delay in ms (500ms, 1s, 2s)
         );
 
         console.log(`[K-MENU] Fetched ${items?.length || 0} ${kind} items`);
@@ -919,10 +930,10 @@ export class KMenuPalette {
         if (items?.length) {
           return items.map((item: any) => ({
             kind,
-            name: item.metadata?.name || item.getName?.() || 'unknown',
+            name: item.metadata?.name || item.getName?.() || "unknown",
             namespace: item.metadata?.namespace || item.getNs?.() || undefined,
-            uid: item.metadata?.uid || item.getId?.() || '',
-            apiVersion: item.apiVersion || '',
+            uid: item.metadata?.uid || item.getId?.() || "",
+            apiVersion: item.apiVersion || "",
           }));
         }
 
@@ -935,10 +946,13 @@ export class KMenuPalette {
       // Flatten the arrays into a single list
       this.allResources = resourceArrays.flat();
 
-      const breakdown = this.allResources.reduce((acc, r) => {
-        acc[r.kind] = (acc[r.kind] || 0) + 1;
-        return acc;
-      }, {} as { [key: string]: number });
+      const breakdown = this.allResources.reduce(
+        (acc, r) => {
+          acc[r.kind] = (acc[r.kind] || 0) + 1;
+          return acc;
+        },
+        {} as { [key: string]: number },
+      );
 
       console.log(`[K-MENU] Loaded ${this.allResources.length} total resources`);
       console.log(`[K-MENU] Resource breakdown:`, breakdown);
@@ -960,10 +974,10 @@ export class KMenuPalette {
     } finally {
       // Hide loading indicator
       if (this.loadingIndicator) {
-        this.loadingIndicator.style.display = 'none';
+        this.loadingIndicator.style.display = "none";
       }
       if (this.resultsList) {
-        this.resultsList.style.display = 'block';
+        this.resultsList.style.display = "block";
       }
 
       // Trigger initial search/render
@@ -1001,7 +1015,7 @@ export class KMenuPalette {
     const query = this.input?.value || "";
 
     // Check if user is in command mode (starts with /)
-    if (query.startsWith('/')) {
+    if (query.startsWith("/")) {
       this.isCommandMode = true;
 
       // Parse command with optional search query: /logs nginx
@@ -1012,8 +1026,8 @@ export class KMenuPalette {
         const searchQuery = commandMatch[2] || "";
 
         // Find matching command
-        const matchingCommand = this.availableCommands.find(cmd =>
-          cmd.id === commandName || cmd.label.toLowerCase().startsWith(commandName)
+        const matchingCommand = this.availableCommands.find(
+          (cmd) => cmd.id === commandName || cmd.label.toLowerCase().startsWith(commandName),
         );
 
         if (matchingCommand) {
@@ -1023,7 +1037,7 @@ export class KMenuPalette {
           const filterMatch = searchQuery.match(/^(kind|namespace|node):(.*)$/i);
 
           if (filterMatch) {
-            const filterType = filterMatch[1].toLowerCase() as 'kind' | 'namespace' | 'node';
+            const filterType = filterMatch[1].toLowerCase() as "kind" | "namespace" | "node";
             const filterValue = filterMatch[2].trim();
 
             // Store filter type for keyboard navigation
@@ -1034,27 +1048,27 @@ export class KMenuPalette {
               let suggestions: string[] = [];
 
               switch (filterType) {
-                case 'kind':
+                case "kind":
                   // Only show kinds that match the command's resource types
                   if (matchingCommand.resourceTypes) {
                     suggestions = matchingCommand.resourceTypes.sort();
                   } else {
-                    suggestions = Array.from(new Set(this.allResources.map(r => r.kind)))
+                    suggestions = Array.from(new Set(this.allResources.map((r) => r.kind)))
                       .sort()
                       .slice(0, 10);
                   }
                   break;
-                case 'namespace':
-                  suggestions = Array.from(new Set(
-                    this.allResources.filter(r => r.namespace).map(r => r.namespace!)
-                  ))
+                case "namespace":
+                  suggestions = Array.from(
+                    new Set(this.allResources.filter((r) => r.namespace).map((r) => r.namespace!)),
+                  )
                     .sort()
                     .slice(0, 10);
                   break;
-                case 'node':
-                  suggestions = Array.from(new Set(
-                    this.allResources.filter(r => r.kind === 'Node').map(r => r.name)
-                  ))
+                case "node":
+                  suggestions = Array.from(
+                    new Set(this.allResources.filter((r) => r.kind === "Node").map((r) => r.name)),
+                  )
                     .sort()
                     .slice(0, 10);
                   break;
@@ -1071,27 +1085,27 @@ export class KMenuPalette {
               let allValues: string[] = [];
 
               switch (filterType) {
-                case 'kind':
+                case "kind":
                   if (matchingCommand.resourceTypes) {
                     allValues = matchingCommand.resourceTypes;
                   } else {
-                    allValues = Array.from(new Set(this.allResources.map(r => r.kind)));
+                    allValues = Array.from(new Set(this.allResources.map((r) => r.kind)));
                   }
                   break;
-                case 'namespace':
-                  allValues = Array.from(new Set(
-                    this.allResources.filter(r => r.namespace).map(r => r.namespace!)
-                  ));
+                case "namespace":
+                  allValues = Array.from(
+                    new Set(this.allResources.filter((r) => r.namespace).map((r) => r.namespace!)),
+                  );
                   break;
-                case 'node':
-                  allValues = Array.from(new Set(
-                    this.allResources.filter(r => r.kind === 'Node').map(r => r.name)
-                  ));
+                case "node":
+                  allValues = Array.from(
+                    new Set(this.allResources.filter((r) => r.kind === "Node").map((r) => r.name)),
+                  );
                   break;
               }
 
               const suggestions = allValues
-                .filter(v => v.toLowerCase().includes(filterValue.toLowerCase()))
+                .filter((v) => v.toLowerCase().includes(filterValue.toLowerCase()))
                 .sort()
                 .slice(0, 10);
 
@@ -1146,7 +1160,7 @@ export class KMenuPalette {
     const filterMatch = query.match(/^(kind|namespace|node):(.*)$/i);
 
     if (filterMatch) {
-      const filterType = filterMatch[1].toLowerCase() as 'kind' | 'namespace' | 'node';
+      const filterType = filterMatch[1].toLowerCase() as "kind" | "namespace" | "node";
       const filterValue = filterMatch[2].trim();
 
       // Store filter type for keyboard navigation
@@ -1157,22 +1171,18 @@ export class KMenuPalette {
         let suggestions: string[] = [];
 
         switch (filterType) {
-          case 'kind':
-            suggestions = Array.from(new Set(this.allResources.map(r => r.kind)))
+          case "kind":
+            suggestions = Array.from(new Set(this.allResources.map((r) => r.kind)))
               .sort()
               .slice(0, 10);
             break;
-          case 'namespace':
-            suggestions = Array.from(new Set(
-              this.allResources.filter(r => r.namespace).map(r => r.namespace!)
-            ))
+          case "namespace":
+            suggestions = Array.from(new Set(this.allResources.filter((r) => r.namespace).map((r) => r.namespace!)))
               .sort()
               .slice(0, 10);
             break;
-          case 'node':
-            suggestions = Array.from(new Set(
-              this.allResources.filter(r => r.kind === 'Node').map(r => r.name)
-            ))
+          case "node":
+            suggestions = Array.from(new Set(this.allResources.filter((r) => r.kind === "Node").map((r) => r.name)))
               .sort()
               .slice(0, 10);
             break;
@@ -1188,25 +1198,21 @@ export class KMenuPalette {
         let suggestions: string[] = [];
 
         switch (filterType) {
-          case 'kind':
-            suggestions = Array.from(new Set(this.allResources.map(r => r.kind)))
-              .filter(k => k.toLowerCase().includes(filterValue.toLowerCase()))
+          case "kind":
+            suggestions = Array.from(new Set(this.allResources.map((r) => r.kind)))
+              .filter((k) => k.toLowerCase().includes(filterValue.toLowerCase()))
               .sort()
               .slice(0, 8);
             break;
-          case 'namespace':
-            suggestions = Array.from(new Set(
-              this.allResources.filter(r => r.namespace).map(r => r.namespace!)
-            ))
-              .filter(ns => ns.toLowerCase().includes(filterValue.toLowerCase()))
+          case "namespace":
+            suggestions = Array.from(new Set(this.allResources.filter((r) => r.namespace).map((r) => r.namespace!)))
+              .filter((ns) => ns.toLowerCase().includes(filterValue.toLowerCase()))
               .sort()
               .slice(0, 8);
             break;
-          case 'node':
-            suggestions = Array.from(new Set(
-              this.allResources.filter(r => r.kind === 'Node').map(r => r.name)
-            ))
-              .filter(n => n.toLowerCase().includes(filterValue.toLowerCase()))
+          case "node":
+            suggestions = Array.from(new Set(this.allResources.filter((r) => r.kind === "Node").map((r) => r.name)))
+              .filter((n) => n.toLowerCase().includes(filterValue.toLowerCase()))
               .sort()
               .slice(0, 8);
             break;
@@ -1241,18 +1247,20 @@ export class KMenuPalette {
     }
 
     // Render suggestions with selected one highlighted
-    hintElement.innerHTML = `${this.autocompleteSuggestions.map((s, index) => {
-      const isSelected = index === this.autocompleteSelectedIndex;
-      return `<span style="
-        color: ${isSelected ? '#fff' : '#888'};
-        background: ${isSelected ? '#3a3a3a' : 'transparent'};
+    hintElement.innerHTML = `${this.autocompleteSuggestions
+      .map((s, index) => {
+        const isSelected = index === this.autocompleteSelectedIndex;
+        return `<span style="
+        color: ${isSelected ? "#fff" : "#888"};
+        background: ${isSelected ? "#3a3a3a" : "transparent"};
         cursor: pointer;
         margin-right: 8px;
         padding: 2px 6px;
         border-radius: 3px;
-        font-weight: ${isSelected ? 'bold' : 'normal'};
+        font-weight: ${isSelected ? "bold" : "normal"};
       ">${s}</span>`;
-    }).join("")}`;
+      })
+      .join("")}`;
 
     // Add click handlers to suggestions
     hintElement.querySelectorAll("span").forEach((span, index) => {
@@ -1264,9 +1272,9 @@ export class KMenuPalette {
     });
   }
 
-  private addFilter(type: 'kind' | 'namespace' | 'node', value: string) {
+  private addFilter(type: "kind" | "namespace" | "node", value: string) {
     // Check if filter already exists
-    const exists = this.activeFilters.some(f => f.type === type && f.value === value);
+    const exists = this.activeFilters.some((f) => f.type === type && f.value === value);
     if (exists) return;
 
     // Add the filter
@@ -1289,8 +1297,8 @@ export class KMenuPalette {
     this.input?.focus();
   }
 
-  private removeFilter(type: 'kind' | 'namespace' | 'node', value: string) {
-    this.activeFilters = this.activeFilters.filter(f => !(f.type === type && f.value === value));
+  private removeFilter(type: "kind" | "namespace" | "node", value: string) {
+    this.activeFilters = this.activeFilters.filter((f) => !(f.type === type && f.value === value));
     this.renderFilterTags();
     this.performSearch();
   }
@@ -1312,7 +1320,7 @@ export class KMenuPalette {
     this.filterTagsContainer.style.marginBottom = "8px";
 
     // Create tags for each filter
-    this.activeFilters.forEach(filter => {
+    this.activeFilters.forEach((filter) => {
       const tag = document.createElement("div");
       tag.style.cssText = `
         display: inline-flex;
@@ -1374,24 +1382,22 @@ export class KMenuPalette {
     let filteredResources = this.allResources;
 
     // Apply active filters
-    this.activeFilters.forEach(filter => {
+    this.activeFilters.forEach((filter) => {
       switch (filter.type) {
-        case 'kind':
-          filteredResources = filteredResources.filter(r =>
-            r.kind.toLowerCase() === filter.value.toLowerCase()
+        case "kind":
+          filteredResources = filteredResources.filter((r) => r.kind.toLowerCase() === filter.value.toLowerCase());
+          break;
+        case "namespace":
+          filteredResources = filteredResources.filter(
+            (r) => r.namespace?.toLowerCase() === filter.value.toLowerCase(),
           );
           break;
-        case 'namespace':
-          filteredResources = filteredResources.filter(r =>
-            r.namespace?.toLowerCase() === filter.value.toLowerCase()
-          );
-          break;
-        case 'node':
+        case "node":
           // For node filter, we'd need to know which resources are on which node
           // For now, just match the node name if the resource is a Pod
           // This would require additional data from the API
-          filteredResources = filteredResources.filter(r =>
-            r.kind === 'Node' && r.name.toLowerCase() === filter.value.toLowerCase()
+          filteredResources = filteredResources.filter(
+            (r) => r.kind === "Node" && r.name.toLowerCase() === filter.value.toLowerCase(),
           );
           break;
       }
@@ -1399,22 +1405,25 @@ export class KMenuPalette {
 
     // If no query, just show filtered results
     if (!query) {
-      this.results = filteredResources.slice(0, 50).map(resource => ({
+      this.results = filteredResources.slice(0, 50).map((resource) => ({
         resource,
         displayText: this.getDisplayText(resource),
         matchScore: 1,
       }));
     } else {
       // Support space-separated search terms
-      const searchTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 0);
+      const searchTerms = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((term) => term.length > 0);
 
       this.results = filteredResources
-        .map(resource => {
+        .map((resource) => {
           const displayText = this.getDisplayText(resource);
           const displayTextLower = displayText.toLowerCase();
           const nameLower = resource.name.toLowerCase();
           const kindLower = resource.kind.toLowerCase();
-          const namespaceLower = resource.namespace?.toLowerCase() || '';
+          const namespaceLower = resource.namespace?.toLowerCase() || "";
 
           // Check if all search terms match
           let totalScore = 0;
@@ -1451,7 +1460,7 @@ export class KMenuPalette {
             matchScore: totalScore,
           };
         })
-        .filter(result => result.matchScore > 0)
+        .filter((result) => result.matchScore > 0)
         .sort((a, b) => b.matchScore - a.matchScore)
         .slice(0, 50);
     }
@@ -1494,9 +1503,7 @@ export class KMenuPalette {
     if (this.results.length === 0) {
       const empty = document.createElement("div");
       empty.className = "k-menu-empty";
-      empty.textContent = this.allResources.length === 0
-        ? "Loading resources..."
-        : "No resources found";
+      empty.textContent = this.allResources.length === 0 ? "Loading resources..." : "No resources found";
       this.resultsList.appendChild(empty);
       return;
     }
@@ -1546,7 +1553,7 @@ export class KMenuPalette {
             event.preventDefault();
             this.autocompleteSelectedIndex = Math.min(
               this.autocompleteSelectedIndex + 1,
-              this.autocompleteSuggestions.length - 1
+              this.autocompleteSuggestions.length - 1,
             );
             this.renderAutocompleteHint();
             return;
@@ -1560,13 +1567,12 @@ export class KMenuPalette {
           case "Enter":
             event.preventDefault();
             // Add the selected suggestion as a filter
-            if (this.autocompleteSelectedIndex >= 0 &&
-                this.autocompleteFilterType &&
-                this.autocompleteSuggestions[this.autocompleteSelectedIndex]) {
-              this.addFilter(
-                this.autocompleteFilterType,
-                this.autocompleteSuggestions[this.autocompleteSelectedIndex]
-              );
+            if (
+              this.autocompleteSelectedIndex >= 0 &&
+              this.autocompleteFilterType &&
+              this.autocompleteSuggestions[this.autocompleteSelectedIndex]
+            ) {
+              this.addFilter(this.autocompleteFilterType, this.autocompleteSuggestions[this.autocompleteSelectedIndex]);
               // Clear the input after the command and show resources
               const commandMatch = this.input?.value.match(/^\/(\w+)/);
               if (commandMatch && this.input) {
@@ -1651,10 +1657,7 @@ export class KMenuPalette {
 
           case "ArrowDown":
             event.preventDefault();
-            this.selectedCommandIndex = Math.min(
-              this.selectedCommandIndex + 1,
-              this.availableCommands.length - 1
-            );
+            this.selectedCommandIndex = Math.min(this.selectedCommandIndex + 1, this.availableCommands.length - 1);
             this.renderCommandList();
             return;
 
@@ -1678,21 +1681,19 @@ export class KMenuPalette {
         case "Tab":
           event.preventDefault();
           // Cycle through suggestions
-          this.autocompleteSelectedIndex =
-            (this.autocompleteSelectedIndex + 1) % this.autocompleteSuggestions.length;
+          this.autocompleteSelectedIndex = (this.autocompleteSelectedIndex + 1) % this.autocompleteSuggestions.length;
           this.renderAutocompleteHint();
           return;
 
         case "Enter":
           event.preventDefault();
           // Add the selected suggestion as a filter
-          if (this.autocompleteSelectedIndex >= 0 &&
-              this.autocompleteFilterType &&
-              this.autocompleteSuggestions[this.autocompleteSelectedIndex]) {
-            this.addFilter(
-              this.autocompleteFilterType,
-              this.autocompleteSuggestions[this.autocompleteSelectedIndex]
-            );
+          if (
+            this.autocompleteSelectedIndex >= 0 &&
+            this.autocompleteFilterType &&
+            this.autocompleteSuggestions[this.autocompleteSelectedIndex]
+          ) {
+            this.addFilter(this.autocompleteFilterType, this.autocompleteSuggestions[this.autocompleteSelectedIndex]);
           }
           return;
 
@@ -1745,16 +1746,14 @@ export class KMenuPalette {
     const query = this.input?.value.substring(1).toLowerCase() || "";
 
     // Filter commands based on query - support space-separated search terms
-    const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+    const searchTerms = query.split(/\s+/).filter((term) => term.length > 0);
 
-    const filteredCommands = this.availableCommands.filter(cmd => {
+    const filteredCommands = this.availableCommands.filter((cmd) => {
       const label = cmd.label.toLowerCase();
       const description = cmd.description.toLowerCase();
 
       // All search terms must match either label or description
-      return searchTerms.every(term =>
-        label.includes(term) || description.includes(term)
-      );
+      return searchTerms.every((term) => label.includes(term) || description.includes(term));
     });
 
     if (filteredCommands.length === 0) {
@@ -1783,7 +1782,7 @@ export class KMenuPalette {
       if (cmd.requiresResource) {
         const badge = document.createElement("span");
         badge.className = "k-menu-result-kind";
-        badge.textContent = cmd.resourceTypes?.join(', ') || 'Requires selection';
+        badge.textContent = cmd.resourceTypes?.join(", ") || "Requires selection";
         badge.style.marginLeft = "8px";
         meta.appendChild(badge);
       }
@@ -1808,21 +1807,19 @@ export class KMenuPalette {
     let filteredResources = this.allResources;
 
     // Apply active filters first (kind, namespace, node, etc.)
-    this.activeFilters.forEach(filter => {
+    this.activeFilters.forEach((filter) => {
       switch (filter.type) {
-        case 'kind':
-          filteredResources = filteredResources.filter(r =>
-            r.kind.toLowerCase() === filter.value.toLowerCase()
+        case "kind":
+          filteredResources = filteredResources.filter((r) => r.kind.toLowerCase() === filter.value.toLowerCase());
+          break;
+        case "namespace":
+          filteredResources = filteredResources.filter(
+            (r) => r.namespace?.toLowerCase() === filter.value.toLowerCase(),
           );
           break;
-        case 'namespace':
-          filteredResources = filteredResources.filter(r =>
-            r.namespace?.toLowerCase() === filter.value.toLowerCase()
-          );
-          break;
-        case 'node':
-          filteredResources = filteredResources.filter(r =>
-            r.kind === 'Node' && r.name.toLowerCase() === filter.value.toLowerCase()
+        case "node":
+          filteredResources = filteredResources.filter(
+            (r) => r.kind === "Node" && r.name.toLowerCase() === filter.value.toLowerCase(),
           );
           break;
       }
@@ -1830,18 +1827,17 @@ export class KMenuPalette {
 
     // Filter by resource type if command requires specific types
     if (this.activeCommand.resourceTypes) {
-      filteredResources = filteredResources.filter(r =>
-        this.activeCommand!.resourceTypes!.includes(r.kind)
-      );
+      filteredResources = filteredResources.filter((r) => this.activeCommand!.resourceTypes!.includes(r.kind));
     }
 
     // Filter by search query
     if (this.commandSearchQuery) {
       const searchQuery = this.commandSearchQuery.toLowerCase();
-      filteredResources = filteredResources.filter(r =>
-        r.name.toLowerCase().includes(searchQuery) ||
-        r.namespace?.toLowerCase().includes(searchQuery) ||
-        r.kind.toLowerCase().includes(searchQuery)
+      filteredResources = filteredResources.filter(
+        (r) =>
+          r.name.toLowerCase().includes(searchQuery) ||
+          r.namespace?.toLowerCase().includes(searchQuery) ||
+          r.kind.toLowerCase().includes(searchQuery),
       );
     }
 
@@ -1851,7 +1847,7 @@ export class KMenuPalette {
     if (filteredResources.length === 0) {
       const empty = document.createElement("div");
       empty.className = "k-menu-empty";
-      empty.textContent = `No ${this.activeCommand.resourceTypes?.join(', ') || 'resources'} found matching "${this.commandSearchQuery}"`;
+      empty.textContent = `No ${this.activeCommand.resourceTypes?.join(", ") || "resources"} found matching "${this.commandSearchQuery}"`;
       this.resultsList.appendChild(empty);
       return;
     }
@@ -1865,7 +1861,7 @@ export class KMenuPalette {
       border-bottom: 1px solid #333;
       background: #1a1a1a;
     `;
-    header.textContent = `/${this.activeCommand.label.toLowerCase()} - Select a ${this.activeCommand.resourceTypes?.join(' or ') || 'resource'}`;
+    header.textContent = `/${this.activeCommand.label.toLowerCase()} - Select a ${this.activeCommand.resourceTypes?.join(" or ") || "resource"}`;
     this.resultsList.appendChild(header);
 
     filteredResources.forEach((resource, index) => {
@@ -1906,7 +1902,7 @@ export class KMenuPalette {
     });
 
     // Update results for keyboard navigation
-    this.results = filteredResources.map(resource => ({
+    this.results = filteredResources.map((resource) => ({
       resource,
       displayText: this.getDisplayText(resource),
       matchScore: 1,
@@ -1921,7 +1917,7 @@ export class KMenuPalette {
 
     // Check if resource type matches
     if (this.activeCommand.resourceTypes && !this.activeCommand.resourceTypes.includes(resource.kind)) {
-      alert(`This command only works with ${this.activeCommand.resourceTypes.join(', ')} resources`);
+      alert(`This command only works with ${this.activeCommand.resourceTypes.join(", ")} resources`);
       return;
     }
 
@@ -1935,15 +1931,13 @@ export class KMenuPalette {
     const query = this.input.value.toLowerCase();
 
     // Only autocomplete if we're not already in a filter (no colon yet)
-    if (query.includes(':')) return;
+    if (query.includes(":")) return;
 
     // Available filter names
-    const filterNames = ['kind:', 'namespace:', 'node:'];
+    const filterNames = ["kind:", "namespace:", "node:"];
 
     // Find matching filter names
-    const matches = filterNames.filter(name =>
-      name.toLowerCase().startsWith(query)
-    );
+    const matches = filterNames.filter((name) => name.toLowerCase().startsWith(query));
 
     if (matches.length > 0) {
       // Autocomplete with the first match
@@ -1957,15 +1951,13 @@ export class KMenuPalette {
     const query = this.input?.value.substring(1).toLowerCase() || "";
 
     // Get filtered commands with space-separated search
-    const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+    const searchTerms = query.split(/\s+/).filter((term) => term.length > 0);
 
-    const filteredCommands = this.availableCommands.filter(cmd => {
+    const filteredCommands = this.availableCommands.filter((cmd) => {
       const label = cmd.label.toLowerCase();
       const description = cmd.description.toLowerCase();
 
-      return searchTerms.every(term =>
-        label.includes(term) || description.includes(term)
-      );
+      return searchTerms.every((term) => label.includes(term) || description.includes(term));
     });
 
     // Get the currently selected command
@@ -1987,18 +1979,20 @@ export class KMenuPalette {
     console.log("[K-MENU] Total available commands:", this.availableCommands.length);
 
     // Filter with space-separated search
-    const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+    const searchTerms = query.split(/\s+/).filter((term) => term.length > 0);
 
-    const filteredCommands = this.availableCommands.filter(cmd => {
+    const filteredCommands = this.availableCommands.filter((cmd) => {
       const label = cmd.label.toLowerCase();
       const description = cmd.description.toLowerCase();
 
-      return searchTerms.every(term =>
-        label.includes(term) || description.includes(term)
-      );
+      return searchTerms.every((term) => label.includes(term) || description.includes(term));
     });
 
-    console.log("[K-MENU] Filtered commands:", filteredCommands.length, filteredCommands.map(c => c.label));
+    console.log(
+      "[K-MENU] Filtered commands:",
+      filteredCommands.length,
+      filteredCommands.map((c) => c.label),
+    );
 
     const command = filteredCommands[index];
     if (!command) {
@@ -2012,7 +2006,7 @@ export class KMenuPalette {
     if (command.requiresResource) {
       const selectedResult = this.results[this.selectedIndex];
       if (!selectedResult) {
-        alert('Please select a resource first (use up/down arrows and Enter to select)');
+        alert("Please select a resource first (use up/down arrows and Enter to select)");
         if (this.input) {
           this.input.value = "";
         }
@@ -2023,7 +2017,7 @@ export class KMenuPalette {
 
       // Check if resource type matches
       if (command.resourceTypes && !command.resourceTypes.includes(selectedResult.resource.kind)) {
-        alert(`This command only works with ${command.resourceTypes.join(', ')} resources`);
+        alert(`This command only works with ${command.resourceTypes.join(", ")} resources`);
         return;
       }
 
@@ -2069,37 +2063,39 @@ export class KMenuPalette {
 
       // Send navigation request to cluster iframe
       console.log("[K-MENU] Sending navigation request to iframe");
-      this.activeIframeSource.postMessage({
-        type: 'k-menu-navigate-to-resource',
-        clusterId: this.currentClusterId,
-        resource: resource
-      }, '*');
+      this.activeIframeSource.postMessage(
+        {
+          type: "k-menu-navigate-to-resource",
+          clusterId: this.currentClusterId,
+          resource: resource,
+        },
+        "*",
+      );
     } catch (err) {
       console.error("[K-MENU] Error navigating to resource:", err);
     }
   }
 
-
   private async deleteResource(resource: KubeResource): Promise<void> {
-    console.log('[K-MENU] Requesting resource deletion from cluster iframe:', resource);
+    console.log("[K-MENU] Requesting resource deletion from cluster iframe:", resource);
 
     if (!this.activeIframeSource) {
-      throw new Error('No active cluster iframe');
+      throw new Error("No active cluster iframe");
     }
 
     await this.requestDeleteResourceFromIframe(this.activeIframeSource, resource as K8sResource);
-    console.log('[K-MENU] Resource deleted successfully');
+    console.log("[K-MENU] Resource deleted successfully");
   }
 
   private async openPodLogs(resource: KubeResource): Promise<void> {
-    console.log('[K-MENU] Requesting logs from cluster iframe:', resource);
+    console.log("[K-MENU] Requesting logs from cluster iframe:", resource);
 
     if (!this.activeIframeSource) {
-      throw new Error('No active cluster iframe');
+      throw new Error("No active cluster iframe");
     }
 
     await this.requestLogsFromIframe(this.activeIframeSource, resource as K8sResource);
-    console.log('[K-MENU] Logs opened successfully');
+    console.log("[K-MENU] Logs opened successfully");
   }
 
   private requestDeleteResourceFromIframe(iframe: Window, resource: K8sResource): Promise<void> {
@@ -2107,11 +2103,11 @@ export class KMenuPalette {
       const requestId = Math.random().toString(36).substring(7);
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error('Delete request timeout'));
+        reject(new Error("Delete request timeout"));
       }, 10000); // 10 second timeout
 
       const messageHandler = (event: MessageEvent) => {
-        if (event.data?.type === 'k-menu-delete-response' && event.data?.requestId === requestId) {
+        if (event.data?.type === "k-menu-delete-response" && event.data?.requestId === requestId) {
           cleanup();
 
           if (event.data.error) {
@@ -2124,18 +2120,21 @@ export class KMenuPalette {
 
       const cleanup = () => {
         clearTimeout(timeout);
-        window.removeEventListener('message', messageHandler);
+        window.removeEventListener("message", messageHandler);
       };
 
-      window.addEventListener('message', messageHandler);
+      window.addEventListener("message", messageHandler);
 
       // Send delete request to iframe
-      console.log('[K-MENU] Sending delete request to iframe with ID:', requestId);
-      iframe.postMessage({
-        type: 'k-menu-delete-resource',
-        requestId: requestId,
-        resource: resource
-      }, '*');
+      console.log("[K-MENU] Sending delete request to iframe with ID:", requestId);
+      iframe.postMessage(
+        {
+          type: "k-menu-delete-resource",
+          requestId: requestId,
+          resource: resource,
+        },
+        "*",
+      );
     });
   }
 
@@ -2144,11 +2143,11 @@ export class KMenuPalette {
       const requestId = Math.random().toString(36).substring(7);
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error('Logs request timeout'));
+        reject(new Error("Logs request timeout"));
       }, 10000); // 10 second timeout
 
       const messageHandler = (event: MessageEvent) => {
-        if (event.data?.type === 'k-menu-logs-response' && event.data?.requestId === requestId) {
+        if (event.data?.type === "k-menu-logs-response" && event.data?.requestId === requestId) {
           cleanup();
 
           if (event.data.error) {
@@ -2161,18 +2160,21 @@ export class KMenuPalette {
 
       const cleanup = () => {
         clearTimeout(timeout);
-        window.removeEventListener('message', messageHandler);
+        window.removeEventListener("message", messageHandler);
       };
 
-      window.addEventListener('message', messageHandler);
+      window.addEventListener("message", messageHandler);
 
       // Send logs request to iframe
-      console.log('[K-MENU] Sending logs request to iframe with ID:', requestId);
-      iframe.postMessage({
-        type: 'k-menu-open-logs',
-        requestId: requestId,
-        resource: resource
-      }, '*');
+      console.log("[K-MENU] Sending logs request to iframe with ID:", requestId);
+      iframe.postMessage(
+        {
+          type: "k-menu-open-logs",
+          requestId: requestId,
+          resource: resource,
+        },
+        "*",
+      );
     });
   }
 

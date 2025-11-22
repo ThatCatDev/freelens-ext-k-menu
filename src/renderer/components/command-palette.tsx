@@ -3,8 +3,8 @@
  * Licensed under MIT License. See LICENSE in root directory for more information.
  */
 
-import React from "react";
 import { observer } from "mobx-react";
+import React from "react";
 import styles from "./command-palette.module.scss";
 
 export interface CommandPaletteProps {
@@ -80,11 +80,7 @@ export class CommandPalette extends React.Component<CommandPaletteProps> {
     }
 
     return (
-      <div
-        ref={this.backdropRef}
-        className={styles.backdrop}
-        onClick={this.handleBackdropClick}
-      >
+      <div ref={this.backdropRef} className={styles.backdrop} onClick={this.handleBackdropClick}>
         <div className={styles.modal}>
           <div className={styles.searchContainer}>
             <input

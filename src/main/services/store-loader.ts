@@ -1,5 +1,6 @@
-import type { Main } from "@freelensapp/extensions";
 import { KMenuPreferencesStore } from "../../common/store";
+
+import type { Main } from "@freelensapp/extensions";
 
 /**
  * Service responsible for initializing and loading extension stores
