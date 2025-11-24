@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/ThatCatDev/freelens-ext-k-menu/compare/v1.0.2...v1.0.3) (2025-11-24)
+
+
+### Bug Fixes
+
+* release name ([8bfd8a5](https://github.com/ThatCatDev/freelens-ext-k-menu/commit/8bfd8a5f02ec97550a800ac5ff7002f20b1f61e0))
+
 ## [1.0.2](https://github.com/ThatCatDev/freelens-ext-k-menu/compare/v1.0.1...v1.0.2) (2025-11-24)
 
 
