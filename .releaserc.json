@@ -23,8 +23,7 @@
       {
         "assets": [
           {
-            "path": "dist/*.tgz",
-            "label": "Extension Package"
+            "path": "dist/*.tgz"
           }
         ]
       }
